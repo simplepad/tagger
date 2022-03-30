@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall
+CFLAGS = -Wall -Og
 LDFLAGS = -lsqlite3
 
 tagger: build/tagger.o build/database.o
