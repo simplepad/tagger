@@ -2,9 +2,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "../include/database.h"
+
+// Platform dependent includes
+#if defined __linux__
+	#include "../include/database.h"
+#elif defined __CYGWIN__ || defined _WIN32
+	#include "..\include\database.h"
+#endif
 
 #define LISTINGS_TABLE_NAME "LISTINGS"
+#define TAGS_TABLE_NAME "TAGS"
 #define DATABASE_DEFAULT_LOCATION "test.tdb"
 
 struct table_template {
@@ -32,7 +39,7 @@ struct table_template* create_table_template(char *name, size_t number_of_column
 
 // Frees the memory occupied by `table`
 void free_table_template(struct table_template *table) {
-	int i;
+	size_t i;
 	for (i=0; i<table->number_of_columns; i++) {
 		free(table->column_types[i]);
 		free(table->column_names[i]);
@@ -46,31 +53,72 @@ void free_table_template(struct table_template *table) {
 
 // Tries to add a column to the table template `table` with the id `column_number`,
 // type `column_type`, name `column_name` and flag `column_can_be_null` set to `0` if column can be NULL, or other value if it cannot be NULL
-void add_column_to_table_template(struct table_template *table, int column_number, char *column_type, char *column_name, int column_can_be_null) {
+void add_column_to_table_template(struct table_template *table, size_t column_number, char *column_type, char *column_name, int column_can_be_null) {
 	if (column_number >= table->number_of_columns) {
 		fputs("Bad column number\n", stderr);
 		return;
 	}
 
 	table->column_types[column_number] = malloc(sizeof(char) * (strlen(column_type) + 1)); // 1 for \0
-	strcpy(table->column_types[column_number], column_type);
+	memcpy(table->column_types[column_number], column_type, sizeof(char) * (strlen(column_type)));
 
 	table->column_names[column_number] = malloc(sizeof(char) * (strlen(column_name) + 1)); // 1 for \0
-	strcpy(table->column_names[column_number], column_name);
+	memcpy(table->column_names[column_number], column_name, sizeof(char) * (strlen(column_name)));
 
 	table->column_can_be_null[column_number] = column_can_be_null;
+}
+
+// Returns `1` if table does exist, returns `0` if table does not exist, otherwise returns `-1` on error
+int table_exists(sqlite3 *db, char *tableName) {
+	sqlite3_stmt *stmt;
+
+	int rc = sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	rc = sqlite3_bind_text(stmt, 1, tableName, strlen(tableName), NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	} else if (rc == SQLITE_ROW) {
+		// Table found
+		sqlite3_finalize(stmt);
+		return 1;
+	} else {
+		// Table not found
+		sqlite3_finalize(stmt);
+		return 0;
+	}
+
+	sqlite3_finalize(stmt);
+	return -1;
 }
 
 // Creates table from table template `table` inside the database `db`,
 // returns `0` if the table was created successfully, otherwise returns `-1` on error
 int create_table_from_template(sqlite3 *db, struct table_template *table) {
+
+	if (table_exists(db, table->table_name)) {
+		return -1; //cannot create the table if it already exists
+	}
+
 	char *statement_head1 = "CREATE TABLE ";
 	char *statement_head2 = " (ID INT PRIMARY KEY NOT NULL,";
 	char *statement_tail = ");";
 	char *statement_full;
 	char *errmsg;
 	size_t statement_lenght = strlen(statement_head1) * sizeof(char) + strlen(table->table_name) * sizeof(char) + strlen(statement_head2) * sizeof(char)  + strlen(statement_tail) * sizeof(char) + 1; // 1 for \0
-	int i;
+	size_t i;
 	int offset;
 
 	// calculating statement_lenght
@@ -124,7 +172,7 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 	offset += strlen(statement_tail) * sizeof(char);
 	statement_full[offset] = '\0';
 
-	fprintf(stderr, "Resulting SQL Statement: %s\n", statement_full);
+	//fprintf(stderr, "Resulting SQL Statement: %s\n", statement_full);
 	if (sqlite3_exec(db, statement_full, NULL, 0, &errmsg) != SQLITE_OK) {
 		fprintf(stderr, "SQL error when trying to create : %s\n", errmsg);
 		sqlite3_free(errmsg);
@@ -134,42 +182,6 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 		free(statement_full);
 		return 0;
 	}
-}
-
-// Returns `1` if table does exist, returns `0` if table does not exist, otherwise returns `-1` on error
-int table_exists(sqlite3 *db, char *tableName) {
-	sqlite3_stmt *stmt;
-
-	int rc = sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", -1, &stmt, NULL);
-	if (rc != SQLITE_OK) {
-		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
-		return -1;
-	}
-
-	rc = sqlite3_bind_text(stmt, 1, tableName, strlen(tableName), NULL);
-	if (rc != SQLITE_OK) {
-		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
-		sqlite3_finalize(stmt);
-		return -1;
-	}
-
-	rc = sqlite3_step(stmt);
-	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
-		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
-		sqlite3_finalize(stmt);
-		return -1;
-	} else if (rc == SQLITE_ROW) {
-		// Table found
-		sqlite3_finalize(stmt);
-		return 1;
-	} else {
-		// Table not found
-		sqlite3_finalize(stmt);
-		return 0;
-	}
-
-	sqlite3_finalize(stmt);
-	return -1;
 }
 
 // Make sure that all required tables exist in the database,
@@ -190,6 +202,22 @@ int init_tables(sqlite3 *db) {
 		} else {
 			fputs("Main Listings table could not be created\n", stderr);
 			free_table_template(listings_table);
+			return -1;
+		}
+	}
+
+	// Table with tags
+	if (!table_exists(db, TAGS_TABLE_NAME)) {
+		fputs("Tags table not found, creating new one...\n", stderr);
+		// Creating TAGS table
+		struct table_template *tags_table = create_table_template(TAGS_TABLE_NAME, 1);
+		add_column_to_table_template(tags_table, 0, "TEXT", "NAME", 0);
+		if (!create_table_from_template(db, tags_table)) {
+			fputs("Tags table created successfully\n", stderr);
+			free_table_template(tags_table);
+		} else {
+			fputs("Tags table could not be created\n", stderr);
+			free_table_template(tags_table);
 			return -1;
 		}
 	}
