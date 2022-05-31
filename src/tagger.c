@@ -1,5 +1,12 @@
 #include "../include/tagger.h"
 
+/**
+ * Main function
+ *
+ * @param argc argument count
+ * @param argv arguments vector
+ * @return
+ */
 int main(int argc, char **argv) {
 	sqlite3 *database;
 	database = open_database(NULL);

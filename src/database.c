@@ -14,61 +14,114 @@
 #define TAGS_TABLE_NAME "TAGS"
 #define DATABASE_DEFAULT_LOCATION "test.tdb"
 
+enum COLUMN_NULL_FLAG {CAN_BE_NULL, CANNOT_BE_NULL};
+
 struct table_template {
 	char *table_name;
 	size_t number_of_columns;
 	char **column_names;
 	char **column_types;
-	int *column_can_be_null;
+	enum COLUMN_NULL_FLAG *column_null_flag;
 };
 
-// Creates table template with the name `name` and number of columns `number_of_columns`
-struct table_template* create_table_template(char *name, size_t number_of_columns) {
-	struct table_template *table = NULL;
-	table = malloc(sizeof(struct table_template));
-
-    if (!table) {
-        fputs("Could not allocate memory for table template\n", stderr);
-        return NULL;
+/**
+ * Frees allocated memory of `table_template' struct, even if not fully allocated
+ *
+ * @param table pointer to `table_template` to free memory from
+ */
+void free_table_template(struct table_template *table) {
+    if (table == NULL){
+        return;
     }
 
-    if (!name) {
+    size_t i;
+
+    if (table->column_types != NULL) {
+        for (i=0; i<table->number_of_columns; i++) {
+            free(table->column_types[i]);
+        }
+    }
+
+    if (table->column_names != NULL) {
+        for (i=0; i<table->number_of_columns; i++) {
+            free(table->column_names[i]);
+        }
+    }
+
+    if (table->column_null_flag != NULL) {
+        free(table->column_null_flag);
+    }
+
+    if (table->table_name != NULL) {
+        free(table->table_name);
+
+    }
+
+    free(table);
+    table = NULL; // prevent use after free?
+}
+
+/**
+ * Creates table template with the name `name` and number of columns `number_of_columns`
+ *
+ * @param name table name
+ * @param number_of_columns number of user-defined columns in the table, not counting PRIMARY KEY column
+ * @return either fully allocated `table_template` or `NULL` on error
+ */
+struct table_template* create_table_template(char *name, size_t number_of_columns) {
+
+    if (name == NULL) {
         fputs("Table name is NULL\n", stderr);
         return NULL;
     }
 
+	struct table_template *table = NULL;
+	table = malloc(sizeof(struct table_template));
+
+    if (table == NULL) {
+        fputs("Could not allocate memory for table template\n", stderr);
+        return NULL;
+    }
+
 	table->table_name = malloc(strlen(name) * sizeof(char) + 1);
+    if (table->table_name == NULL) {
+        free_table_template(table);
+        return NULL;
+    }
 	memcpy(table->table_name, name, strlen(name) * sizeof(char) + 1);
 
 	table->number_of_columns = number_of_columns;
 	table->column_names = malloc(number_of_columns * sizeof(char*));
+    if (table->column_names == NULL) {
+        free_table_template(table);
+        return NULL;
+    }
 	table->column_types = malloc(number_of_columns * sizeof(char*));
-	table->column_can_be_null = malloc(number_of_columns * sizeof(int));
+    if (table->column_types == NULL) {
+        free_table_template(table);
+        return NULL;
+    }
+	table->column_null_flag = malloc(number_of_columns * sizeof(enum COLUMN_NULL_FLAG));
+    if (table->column_null_flag == NULL) {
+        free_table_template(table);
+        return NULL;
+    }
+
 	return table;
 }
 
-// Frees the memory occupied by `table`
-void free_table_template(struct table_template *table) {
-    if (!table){
-        return;
-    }
-
-	size_t i;
-	for (i=0; i<table->number_of_columns; i++) {
-		free(table->column_types[i]);
-		free(table->column_names[i]);
-	}
-
-	free(table->column_can_be_null);
-	free(table->table_name);
-	free(table);
-	table = NULL; // prevent use after free?
-}
-
-// Tries to add a column to the table template `table` with the id `column_number`,
-// type `column_type`, name `column_name` and flag `column_can_be_null` set to `0` if column can be NULL, or other value if it cannot be NULL
-void add_column_to_table_template(struct table_template *table, size_t column_number, char *column_type, char *column_name, int column_can_be_null) {
-	if (!table || !column_type || !column_name) {
+/**
+ * Tries to add a column to the table template
+ *
+ * @param table pointer to the `table_template` to add a column to
+ * @param column_number number of the column to add, starting from 0
+ * @param column_type SQL type of column to add
+ * @param column_name name of the column to add
+ * @param column_null_flag whether or not to set column as `NOT NULL`
+ */
+void add_column_to_table_template(struct table_template *table, size_t column_number, char *column_type,
+        char *column_name, enum COLUMN_NULL_FLAG column_null_flag) {
+	if (table == NULL || column_type == NULL || column_name == NULL) {
         return;
     }
 
@@ -78,15 +131,29 @@ void add_column_to_table_template(struct table_template *table, size_t column_nu
 	}
 
 	table->column_types[column_number] = malloc(sizeof(char) * (strlen(column_type) + 1)); // 1 for \0
+    if (table->column_types[column_number] == NULL) {
+        fputs("Could not allocate memory\n", stderr);
+        return;
+    }
 	memcpy(table->column_types[column_number], column_type, sizeof(char) * (strlen(column_type)));
 
 	table->column_names[column_number] = malloc(sizeof(char) * (strlen(column_name) + 1)); // 1 for \0
+    if (table->column_names[column_number] == NULL) {
+        fputs("Could not allocate memory\n", stderr);
+        return;
+    }
 	memcpy(table->column_names[column_number], column_name, sizeof(char) * (strlen(column_name)));
 
-	table->column_can_be_null[column_number] = column_can_be_null;
+	table->column_null_flag[column_number] = column_null_flag;
 }
 
-// Returns `1` if table does exist, returns `0` if table does not exist, otherwise returns `-1` on error
+/**
+ * Check if the table already exists in the database
+ *
+ * @param db pointer to SQLite3 database
+ * @param tableName table name to search for
+ * @return `1` if the table exists, `0` if the table does not exist and `-1` on error
+ */
 int table_exists(sqlite3 *db, char *tableName) {
 
     if (!db || !tableName) {
@@ -101,6 +168,7 @@ int table_exists(sqlite3 *db, char *tableName) {
 		return -1;
 	}
 
+    // 1 here means leftmost SQL parameter index
 	rc = sqlite3_bind_text(stmt, 1, tableName, strlen(tableName), NULL);
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
@@ -127,11 +195,16 @@ int table_exists(sqlite3 *db, char *tableName) {
 	return -1;
 }
 
-// Creates table from table template `table` inside the database `db`,
-// returns `0` if the table was created successfully, otherwise returns `-1` on error
+/**
+ * Creates a table from table template and adds it to the database
+ *
+ * @param db the database to add the new table to
+ * @param table table_template containing the information about new table
+ * @return `0` if new table was created and added successfully, otherwise `-1` on error
+ */
 int create_table_from_template(sqlite3 *db, struct table_template *table) {
 
-	if (!table || table_exists(db, table->table_name)) {
+	if (table == NULL || table_exists(db, table->table_name)) {
 		return -1; //cannot create the table if it already exists
 	}
 
@@ -140,24 +213,25 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 	char *statement_tail = ");";
 	char *statement_full;
 	char *errmsg;
-	size_t statement_lenght = strlen(statement_head1) * sizeof(char) + strlen(table->table_name) * sizeof(char) + strlen(statement_head2) * sizeof(char)  + strlen(statement_tail) * sizeof(char) + 1; // 1 for \0
+	size_t statement_length = strlen(statement_head1) * sizeof(char) + strlen(table->table_name) * sizeof(char) +
+            strlen(statement_head2) * sizeof(char) + strlen(statement_tail) * sizeof(char) + 1; // 1 for \0
 	size_t i;
 	size_t offset;
 
-	// calculating statement_lenght
+	// calculating statement_length
 	for (i=0; i<table->number_of_columns; i++) {
-		statement_lenght += strlen(table->column_types[i]) * sizeof(char);
-		statement_lenght += 1; // blankspace
-		statement_lenght += strlen(table->column_names[i]) * sizeof(char);
-		if (!table->column_can_be_null[i]) {
-			statement_lenght += 1 + strlen("NOT NULL") * sizeof(char); // 1 for blankspace
+        statement_length += strlen(table->column_types[i]) * sizeof(char);
+        statement_length += 1; // whitespace
+		statement_length += strlen(table->column_names[i]) * sizeof(char);
+		if (table->column_null_flag[i] == CANNOT_BE_NULL) {
+            statement_length += 1 + strlen("NOT NULL") * sizeof(char); // 1 for whitespace
 		}
-		statement_lenght += 1; // 1 for comma
+        statement_length += 1; // 1 for comma
 	}
-	statement_lenght--; // remove last comma
+	statement_length--; // remove last comma
 
 	// allocating space for statement
-	statement_full = malloc(statement_lenght * sizeof(char));
+	statement_full = malloc(statement_length * sizeof(char));
 	if (!statement_full) {
 		fprintf(stderr, "Error allocating memory for statement buffer\n");
 		return -1;
@@ -178,12 +252,12 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 		memcpy(statement_full+offset, table->column_names[i], strlen(table->column_names[i]) * sizeof(char));
 		offset += strlen(table->column_names[i]) * sizeof(char);
 		statement_full[offset] = ' ';
-		offset += 1; // 1 for blankspace
+		offset += 1; // 1 for whitespace
 		memcpy(statement_full+offset, table->column_types[i], strlen(table->column_types[i]) * sizeof(char));
 		offset += strlen(table->column_types[i]) * sizeof(char);
-		if (!table->column_can_be_null[i]) {
+		if (table->column_null_flag[i] == CANNOT_BE_NULL) {
 			statement_full[offset] = ' ';
-			offset += 1; // 1 for blankspace
+			offset += 1; // 1 for whitespace
 			memcpy(statement_full+offset, "NOT NULL", strlen("NOT NULL") * sizeof(char));
 			offset += strlen("NOT NULL") * sizeof(char);
 		}
@@ -207,18 +281,26 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 	}
 }
 
-// Make sure that all required tables exist in the database,
-// returns `0` if all tables are initialized and present in the database,
-// otherwise returns `-1` on error
+/**
+ * Initialize all required tables in the provided database, creates them if they don't exist
+ *
+ * @param db pointer to SQLite3 database
+ * @return `0` if all required tables are initialized,  otherwise `-1` on error
+ */
 int init_tables(sqlite3 *db) {
 	// Table with Listings
 	if (!table_exists(db, LISTINGS_TABLE_NAME)) {
 		fputs("Main Listings table not found, creating new one...\n", stderr);
 		// Creating LISTINGS table
 		struct table_template *listings_table = create_table_template(LISTINGS_TABLE_NAME, 3);
-		add_column_to_table_template(listings_table, 0, "TEXT", "NAME", 0);
-		add_column_to_table_template(listings_table, 1, "TEXT", "LINUX_PATH", 1);
-		add_column_to_table_template(listings_table, 2, "TEXT", "WINDOWS_PATH", 1);
+        if (listings_table == NULL) {
+            fputs("Could not create table_template for listings table\n", stderr);
+            return -1;
+        }
+
+		add_column_to_table_template(listings_table, 0, "TEXT", "NAME", CANNOT_BE_NULL);
+		add_column_to_table_template(listings_table, 1, "TEXT", "LINUX_PATH", CAN_BE_NULL);
+		add_column_to_table_template(listings_table, 2, "TEXT", "WINDOWS_PATH", CAN_BE_NULL);
 		if (!create_table_from_template(db, listings_table)) {
 			fputs("Main Listings table created successfully\n", stderr);
 			free_table_template(listings_table);
@@ -234,7 +316,12 @@ int init_tables(sqlite3 *db) {
 		fputs("Tags table not found, creating new one...\n", stderr);
 		// Creating TAGS table
 		struct table_template *tags_table = create_table_template(TAGS_TABLE_NAME, 1);
-		add_column_to_table_template(tags_table, 0, "TEXT", "NAME", 0);
+        if (tags_table == NULL) {
+            fputs("Could not create table_template for tags table\n", stderr);
+            return -1;
+        }
+
+		add_column_to_table_template(tags_table, 0, "TEXT", "NAME", CANNOT_BE_NULL);
 		if (!create_table_from_template(db, tags_table)) {
 			fputs("Tags table created successfully\n", stderr);
 			free_table_template(tags_table);
@@ -248,9 +335,13 @@ int init_tables(sqlite3 *db) {
 	return 0;
 }
 
-// Opens the database in the location `database_location` if not NULL,
-// otherwise opens the database in the location DATABASE_DEFAULT_LOCATION,
-// returns a pointer to the opened database
+/**
+ * Opens SQLite3 database in the specified location and returns the pointer to it
+ *
+ * @param database_location location of the database to open,
+ * if specified as `NULL`, `DATABASE_DEFAULT_LOCATION` is used instead
+ * @return pointer to the opened database, otherwise `NULL` on error
+ */
 sqlite3* open_database(char *database_location) {
 	sqlite3 *db;
 	char *location = DATABASE_DEFAULT_LOCATION;
@@ -267,7 +358,13 @@ sqlite3* open_database(char *database_location) {
 	return db;
 }
 
-// Closes the database
+/**
+ * Closes the SQLite3 database
+ *
+ * @param db pointer to the database to close
+ */
 void close_database(sqlite3 *db) {
-	sqlite3_close(db);
+    if (db != NULL) {
+        sqlite3_close(db);
+    }
 }
