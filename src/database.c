@@ -24,8 +24,18 @@ struct table_template {
 
 // Creates table template with the name `name` and number of columns `number_of_columns`
 struct table_template* create_table_template(char *name, size_t number_of_columns) {
-	struct table_template *table;
+	struct table_template *table = NULL;
 	table = malloc(sizeof(struct table_template));
+
+    if (!table) {
+        fputs("Could not allocate memory for table template\n", stderr);
+        return NULL;
+    }
+
+    if (!name) {
+        fputs("Table name is NULL\n", stderr);
+        return NULL;
+    }
 
 	table->table_name = malloc(strlen(name) * sizeof(char) + 1);
 	memcpy(table->table_name, name, strlen(name) * sizeof(char) + 1);
@@ -39,6 +49,10 @@ struct table_template* create_table_template(char *name, size_t number_of_column
 
 // Frees the memory occupied by `table`
 void free_table_template(struct table_template *table) {
+    if (!table){
+        return;
+    }
+
 	size_t i;
 	for (i=0; i<table->number_of_columns; i++) {
 		free(table->column_types[i]);
@@ -54,7 +68,11 @@ void free_table_template(struct table_template *table) {
 // Tries to add a column to the table template `table` with the id `column_number`,
 // type `column_type`, name `column_name` and flag `column_can_be_null` set to `0` if column can be NULL, or other value if it cannot be NULL
 void add_column_to_table_template(struct table_template *table, size_t column_number, char *column_type, char *column_name, int column_can_be_null) {
-	if (column_number >= table->number_of_columns) {
+	if (!table || !column_type || !column_name) {
+        return;
+    }
+
+    if (column_number >= table->number_of_columns) {
 		fputs("Bad column number\n", stderr);
 		return;
 	}
@@ -70,6 +88,11 @@ void add_column_to_table_template(struct table_template *table, size_t column_nu
 
 // Returns `1` if table does exist, returns `0` if table does not exist, otherwise returns `-1` on error
 int table_exists(sqlite3 *db, char *tableName) {
+
+    if (!db || !tableName) {
+        return -1;
+    }
+
 	sqlite3_stmt *stmt;
 
 	int rc = sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", -1, &stmt, NULL);
@@ -108,7 +131,7 @@ int table_exists(sqlite3 *db, char *tableName) {
 // returns `0` if the table was created successfully, otherwise returns `-1` on error
 int create_table_from_template(sqlite3 *db, struct table_template *table) {
 
-	if (table_exists(db, table->table_name)) {
+	if (!table || table_exists(db, table->table_name)) {
 		return -1; //cannot create the table if it already exists
 	}
 
@@ -119,7 +142,7 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 	char *errmsg;
 	size_t statement_lenght = strlen(statement_head1) * sizeof(char) + strlen(table->table_name) * sizeof(char) + strlen(statement_head2) * sizeof(char)  + strlen(statement_tail) * sizeof(char) + 1; // 1 for \0
 	size_t i;
-	int offset;
+	size_t offset;
 
 	// calculating statement_lenght
 	for (i=0; i<table->number_of_columns; i++) {
