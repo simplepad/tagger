@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -Og
+CFLAGS = -Wall -Wextra -Wpedantic -g
 LDFLAGS = -lsqlite3
 
 tagger: initfolders build/tagger.o build/database.o
@@ -17,3 +17,4 @@ initfolders:
 clean:
 	rm -rf build/*
 	rm -f tagger
+	rm -f test.tdb
