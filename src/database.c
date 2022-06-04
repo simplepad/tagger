@@ -40,12 +40,16 @@ void free_table_template(struct table_template *table) {
         for (i=0; i<table->number_of_columns; i++) {
             free(table->column_types[i]);
         }
+
+        free(table->column_types);
     }
 
     if (table->column_names != NULL) {
         for (i=0; i<table->number_of_columns; i++) {
             free(table->column_names[i]);
         }
+
+        free(table->column_names);
     }
 
     if (table->column_null_flag != NULL) {
@@ -54,7 +58,6 @@ void free_table_template(struct table_template *table) {
 
     if (table->table_name != NULL) {
         free(table->table_name);
-
     }
 
     free(table);
@@ -82,6 +85,12 @@ struct table_template* create_table_template(char *name, size_t number_of_column
         fputs("Could not allocate memory for table template\n", stderr);
         return NULL;
     }
+
+    table->table_name = NULL;
+    table->number_of_columns = number_of_columns;
+    table->column_names = NULL;
+    table->column_types = NULL;
+    table->column_null_flag = NULL;
 
 	table->table_name = malloc(strlen(name) * sizeof(char) + 1);
     if (table->table_name == NULL) {
@@ -135,14 +144,14 @@ void add_column_to_table_template(struct table_template *table, size_t column_nu
         fputs("Could not allocate memory\n", stderr);
         return;
     }
-	memcpy(table->column_types[column_number], column_type, sizeof(char) * (strlen(column_type)));
+	memcpy(table->column_types[column_number], column_type, sizeof(char) * (strlen(column_type) + 1));
 
 	table->column_names[column_number] = malloc(sizeof(char) * (strlen(column_name) + 1)); // 1 for \0
     if (table->column_names[column_number] == NULL) {
         fputs("Could not allocate memory\n", stderr);
         return;
     }
-	memcpy(table->column_names[column_number], column_name, sizeof(char) * (strlen(column_name)));
+	memcpy(table->column_names[column_number], column_name, sizeof(char) * (strlen(column_name) + 1));
 
 	table->column_null_flag[column_number] = column_null_flag;
 }
@@ -271,7 +280,7 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 
 	//fprintf(stderr, "Resulting SQL Statement: %s\n", statement_full);
 	if (sqlite3_exec(db, statement_full, NULL, 0, &errmsg) != SQLITE_OK) {
-		fprintf(stderr, "SQL error when trying to create : %s\n", errmsg);
+		fprintf(stderr, "SQL error when trying to create new table from table_template: %s\n", errmsg);
 		sqlite3_free(errmsg);
 		free(statement_full);
 		return -1;
