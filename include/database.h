@@ -5,6 +5,7 @@
 #endif
 
 int add_new_tag(sqlite3 *db, char *tagName);
+int add_new_listing(sqlite3 *db, char *listingName, char *listingPath);
 int init_tables(sqlite3 *db);
 sqlite3* open_database(char *database_location);
 void close_database(sqlite3 *db);

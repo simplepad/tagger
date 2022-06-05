@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <linux/limits.h>
 
 // Platform dependent includes
 #if defined __linux__
@@ -396,6 +398,81 @@ int add_new_tag(sqlite3 *db, char *tagName) {
 }
 
 /**
+ * Add new listing to the database
+ *
+ * @param db SQLite3 database to add the listing to, must be initialized
+ * @param listingName listing display name, must be unique
+ * @param listingPath listing path (can be relative), must be unique
+ * @return `1` if the listing was added, `0` if listing already exists, `-1` on error
+ */
+int add_new_listing(sqlite3 *db, char *listingName, char *listingPath) {
+    // check if the path exists and points to a directory
+    struct stat s;
+    if (stat(listingPath, &s) == 0) {
+        // path exists
+        if (!(s.st_mode & S_IFDIR)) {
+            fprintf(stderr, "Listing should be a directory!\n");
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "Path %s does not exist\n", listingPath);
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+
+    #if defined __linux__
+    int rc = sqlite3_prepare_v2(db,
+        "INSERT INTO " LISTINGS_TABLE_NAME "(NAME,LINUX_PATH) VALUES(?,?);", -1, &stmt, NULL);
+    #elif defined __CYGWIN__ || defined _WIN32
+    int rc = sqlite3_prepare_v2(db,
+            "INSERT INTO " LISTINGS_TABLE_NAME "(NAME,WINDOWS_PATH) VALUES(?,?);", -1, &stmt, NULL);
+    #endif
+
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    // 1 here means leftmost SQL parameter index
+    rc = sqlite3_bind_text(stmt, 1, listingName, -1, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    // TODO probably won't work on windows
+    char *absolutePath = realpath(listingPath, NULL);
+    if (absolutePath == NULL) {
+        fprintf(stderr, "Error when generating absolute path of %s\n", listingPath);
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    rc = sqlite3_bind_text(stmt, 2, absolutePath, -1, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+    free(absolutePath); // not needed anymore
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return 1;
+    } else if (rc == SQLITE_CONSTRAINT) { // Listing already exists
+        sqlite3_finalize(stmt);
+        return 0;
+    } else {
+        fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+}
+
+/**
  * Initialize all required tables in the provided database, creates them if they don't exist
  *
  * @param db pointer to SQLite3 database
@@ -412,9 +489,9 @@ int init_tables(sqlite3 *db) {
             return -1;
         }
 
-		add_column_to_table_template(listings_table, 0, "TEXT", "NAME", CANNOT_BE_NULL, NOT_UNIQUE);
-		add_column_to_table_template(listings_table, 1, "TEXT", "LINUX_PATH", CAN_BE_NULL,NOT_UNIQUE);
-		add_column_to_table_template(listings_table, 2, "TEXT", "WINDOWS_PATH", CAN_BE_NULL,NOT_UNIQUE);
+		add_column_to_table_template(listings_table, 0, "TEXT", "NAME", CANNOT_BE_NULL, UNIQUE);
+		add_column_to_table_template(listings_table, 1, "TEXT", "LINUX_PATH", CAN_BE_NULL,UNIQUE);
+		add_column_to_table_template(listings_table, 2, "TEXT", "WINDOWS_PATH", CAN_BE_NULL,UNIQUE);
 		if (!create_table_from_template(db, listings_table)) {
 			fputs("Main Listings table created successfully\n", stderr);
 			free_table_template(listings_table);
