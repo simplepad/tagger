@@ -15,6 +15,7 @@
 #define DATABASE_DEFAULT_LOCATION "test.tdb"
 
 enum COLUMN_NULL_FLAG {CAN_BE_NULL, CANNOT_BE_NULL};
+enum COLUMN_UNIQUE_FLAG {UNIQUE, NOT_UNIQUE};
 
 struct table_template {
 	char *table_name;
@@ -22,6 +23,7 @@ struct table_template {
 	char **column_names;
 	char **column_types;
 	enum COLUMN_NULL_FLAG *column_null_flag;
+	enum COLUMN_UNIQUE_FLAG *column_unique_flag;
 };
 
 /**
@@ -54,6 +56,10 @@ void free_table_template(struct table_template *table) {
 
     if (table->column_null_flag != NULL) {
         free(table->column_null_flag);
+    }
+
+    if (table->column_unique_flag != NULL) {
+        free(table->column_unique_flag);
     }
 
     if (table->table_name != NULL) {
@@ -91,6 +97,7 @@ struct table_template* create_table_template(char *name, size_t number_of_column
     table->column_names = NULL;
     table->column_types = NULL;
     table->column_null_flag = NULL;
+    table->column_unique_flag = NULL;
 
 	table->table_name = malloc(strlen(name) * sizeof(char) + 1);
     if (table->table_name == NULL) {
@@ -115,6 +122,11 @@ struct table_template* create_table_template(char *name, size_t number_of_column
         free_table_template(table);
         return NULL;
     }
+    table->column_unique_flag = malloc(number_of_columns * sizeof(enum COLUMN_UNIQUE_FLAG));
+    if (table->column_unique_flag == NULL) {
+        free_table_template(table);
+        return NULL;
+    }
 
 	return table;
 }
@@ -127,9 +139,10 @@ struct table_template* create_table_template(char *name, size_t number_of_column
  * @param column_type SQL type of column to add
  * @param column_name name of the column to add
  * @param column_null_flag whether or not to set column as `NOT NULL`
+ * @param column_unique_flag whether or not to set column as `UNIQUE`
  */
 void add_column_to_table_template(struct table_template *table, size_t column_number, char *column_type,
-        char *column_name, enum COLUMN_NULL_FLAG column_null_flag) {
+        char *column_name, enum COLUMN_NULL_FLAG column_null_flag, enum COLUMN_UNIQUE_FLAG column_unique_flag) {
 	if (table == NULL || column_type == NULL || column_name == NULL) {
         return;
     }
@@ -154,6 +167,7 @@ void add_column_to_table_template(struct table_template *table, size_t column_nu
 	memcpy(table->column_names[column_number], column_name, sizeof(char) * (strlen(column_name) + 1));
 
 	table->column_null_flag[column_number] = column_null_flag;
+    table->column_unique_flag[column_number] = column_unique_flag;
 }
 
 /**
@@ -171,14 +185,14 @@ int table_exists(sqlite3 *db, char *tableName) {
 
 	sqlite3_stmt *stmt;
 
-	int rc = sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;", -1, &stmt, NULL);
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
 		return -1;
 	}
 
     // 1 here means leftmost SQL parameter index
-	rc = sqlite3_bind_text(stmt, 1, tableName, strlen(tableName), NULL);
+	rc = sqlite3_bind_text(stmt, 1, tableName, -1, NULL);
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
 		sqlite3_finalize(stmt);
@@ -218,7 +232,7 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 	}
 
 	char *statement_head1 = "CREATE TABLE ";
-	char *statement_head2 = " (ID INT PRIMARY KEY NOT NULL,";
+	char *statement_head2 = " (ID INT PRIMARY KEY,";
 	char *statement_tail = ");";
 	char *statement_full;
 	char *errmsg;
@@ -235,6 +249,9 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 		if (table->column_null_flag[i] == CANNOT_BE_NULL) {
             statement_length += 1 + strlen("NOT NULL") * sizeof(char); // 1 for whitespace
 		}
+        if (table->column_unique_flag[i] == UNIQUE) {
+            statement_length += 1 + strlen("UNIQUE") * sizeof(char); // 1 for whitespace
+        }
         statement_length += 1; // 1 for comma
 	}
 	statement_length--; // remove last comma
@@ -270,6 +287,12 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 			memcpy(statement_full+offset, "NOT NULL", strlen("NOT NULL") * sizeof(char));
 			offset += strlen("NOT NULL") * sizeof(char);
 		}
+        if (table->column_unique_flag[i] == UNIQUE) {
+            statement_full[offset] = ' ';
+            offset += 1; // 1 for whitespace
+            memcpy(statement_full+offset, "UNIQUE", strlen("UNIQUE") * sizeof(char));
+            offset += strlen("UNIQUE") * sizeof(char);
+        }
 		statement_full[offset] = ',';
 		offset += 1; // 1 for comma
 	}
@@ -291,6 +314,88 @@ int create_table_from_template(sqlite3 *db, struct table_template *table) {
 }
 
 /**
+ * Check if tag already exists in the database
+ *
+ * @param db SQLite3 database to search the tag in, must be initialized
+ * @param tagName string with the tag name
+ * @return `1` if the tag was found, `0` if not, `-1` on error
+ */
+int tag_exists(sqlite3 *db, char *tagName) {
+    sqlite3_stmt *stmt;
+
+    int rc = sqlite3_prepare_v2(db, "SELECT 1 FROM " TAGS_TABLE_NAME " WHERE type='table' AND name=?;", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    // 1 here means leftmost SQL parameter index
+    rc = sqlite3_bind_text(stmt, 1, tagName, -1, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+        fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    } else if (rc == SQLITE_ROW) {
+        // Tag found
+        sqlite3_finalize(stmt);
+        return 1;
+    } else {
+        // Table not found
+        sqlite3_finalize(stmt);
+        return 0;
+    }
+}
+
+/**
+ * Add new tag to the database
+ *
+ * @param db SQLite3 database to add the tag to, must be initialized
+ * @param tagName new tag's name
+ * @return `1` if the tag was added, `0` if tag already exists, `-1` on error
+ */
+int add_new_tag(sqlite3 *db, char *tagName) {
+    if (db == NULL || tagName == NULL) {
+        return -1;
+    }
+
+    sqlite3_stmt *stmt;
+
+    int rc = sqlite3_prepare_v2(db, "INSERT INTO " TAGS_TABLE_NAME "(NAME) VALUES(?);", -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    // 1 here means leftmost SQL parameter index
+    rc = sqlite3_bind_text(stmt, 1, tagName, -1, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_DONE) {
+        sqlite3_finalize(stmt);
+        return 1;
+    } else if (rc == SQLITE_CONSTRAINT) { // Tag already exists
+        sqlite3_finalize(stmt);
+        return 0;
+    } else {
+        fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return -1;
+    }
+}
+
+/**
  * Initialize all required tables in the provided database, creates them if they don't exist
  *
  * @param db pointer to SQLite3 database
@@ -307,9 +412,9 @@ int init_tables(sqlite3 *db) {
             return -1;
         }
 
-		add_column_to_table_template(listings_table, 0, "TEXT", "NAME", CANNOT_BE_NULL);
-		add_column_to_table_template(listings_table, 1, "TEXT", "LINUX_PATH", CAN_BE_NULL);
-		add_column_to_table_template(listings_table, 2, "TEXT", "WINDOWS_PATH", CAN_BE_NULL);
+		add_column_to_table_template(listings_table, 0, "TEXT", "NAME", CANNOT_BE_NULL, NOT_UNIQUE);
+		add_column_to_table_template(listings_table, 1, "TEXT", "LINUX_PATH", CAN_BE_NULL,NOT_UNIQUE);
+		add_column_to_table_template(listings_table, 2, "TEXT", "WINDOWS_PATH", CAN_BE_NULL,NOT_UNIQUE);
 		if (!create_table_from_template(db, listings_table)) {
 			fputs("Main Listings table created successfully\n", stderr);
 			free_table_template(listings_table);
@@ -330,7 +435,7 @@ int init_tables(sqlite3 *db) {
             return -1;
         }
 
-		add_column_to_table_template(tags_table, 0, "TEXT", "NAME", CANNOT_BE_NULL);
+		add_column_to_table_template(tags_table, 0, "TEXT", "NAME", CANNOT_BE_NULL, UNIQUE);
 		if (!create_table_from_template(db, tags_table)) {
 			fputs("Tags table created successfully\n", stderr);
 			free_table_template(tags_table);

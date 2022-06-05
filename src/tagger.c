@@ -16,7 +16,6 @@ int main(int argc, char **argv) {
 		return -1;
 	}
 
-	// do something
 	if (init_tables(database)) {
 		// something went wrong when initializing tables
 		fputs("Could not initialize tables\n", stderr);
