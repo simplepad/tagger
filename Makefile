@@ -18,3 +18,11 @@ clean:
 	rm -rf build/*
 	rm -f tagger
 	rm -f test.tdb
+
+testleaks: tagger
+	valgrind --leak-check=full \
+         --show-leak-kinds=all \
+         --track-origins=yes \
+         --verbose \
+         ./tagger
+
