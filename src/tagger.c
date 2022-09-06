@@ -7,7 +7,7 @@
  * @param argv arguments vector
  * @return
  */
-int main(int argc, char **argv) {
+int main(void) {
 	sqlite3 *database;
 	database = open_database(NULL);
 
@@ -19,6 +19,7 @@ int main(int argc, char **argv) {
 	if (init_tables(database)) {
 		// something went wrong when initializing tables
 		fputs("Could not initialize tables\n", stderr);
+		close_database(database);
 		return -1;
 	}
 
