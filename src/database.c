@@ -254,7 +254,7 @@ int add_new_listing(sqlite3 *db, char *listingName, enum LISTING_TYPE type, char
 	}
 
 	// CREATING A NEW TABLE FOR THE LISTING
-	char * table_sql =  "CREATE TABLE %s ("
+	static const char table_sql[] =  "CREATE TABLE %s ("
 						"id INTEGER PRIMARY KEY NOT NULL,"
 						"name TEXT NOT NULL,"
 						"relpath TEXT NOT NULL UNIQUE,"
@@ -484,14 +484,14 @@ int init_tables(sqlite3 *db) {
 		fputs("Main Listings table not found, creating new one...\n", stderr);
 
 		// Creating LISTINGS table
-		char * listings_table_sql = "CREATE TABLE " LISTINGS_TABLE_NAME " ("
+		static const char listings_table_sql[] = "CREATE TABLE " LISTINGS_TABLE_NAME " ("
 								   "id INTEGER PRIMARY KEY NOT NULL,"
 								   "name TEXT NOT NULL UNIQUE,"
 								   "type INT NOT NULL,"
 								   "path TEXT NOT NULL UNIQUE"
 								   ")";
 
-		if (!execute_sql_string(db, listings_table_sql)) {
+		if (!execute_sql_string(db, (char*) listings_table_sql)) {
 			fputs("Main Listings table created successfully\n", stderr);
 		} else {
 			fputs("Main Listings table could not be created\n", stderr);
@@ -504,12 +504,12 @@ int init_tables(sqlite3 *db) {
 		fputs("Tags table not found, creating new one...\n", stderr);
 
 		// Creating TAGS table
-		char * tags_table_sql = "CREATE TABLE " TAGS_TABLE_NAME " ("
+		static const char tags_table_sql[] = "CREATE TABLE " TAGS_TABLE_NAME " ("
 								   "id INTEGER PRIMARY KEY NOT NULL,"
 								   "name TEXT NOT NULL UNIQUE"
 								   ")";
 
-		if (!execute_sql_string(db, tags_table_sql)) {
+		if (!execute_sql_string(db, (char*) tags_table_sql)) {
 			fputs("Tags table created successfully\n", stderr);
 		} else {
 			fputs("Tags table could not be created\n", stderr);
