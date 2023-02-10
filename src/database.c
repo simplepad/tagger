@@ -9,6 +9,8 @@
 
 #define LISTINGS_TABLE_NAME "listings"
 #define TAGS_TABLE_NAME "tags"
+#define ITEMS_TABLE_NAME "items"
+#define ITEM_TAGS_TABLE_NAME "itemtags"
 #define DATABASE_DEFAULT_LOCATION "test.tdb"
 
 /**
@@ -67,7 +69,7 @@ int tag_exists(sqlite3 *db, char *tagName) {
 	sqlite3_stmt *stmt;
 
 	int rc = sqlite3_prepare_v2(db,
-		"SELECT EXISTS(SELECT 1 FROM " TAGS_TABLE_NAME " WHERE name=? LIMIT 1);", -1, &stmt, NULL);
+		"SELECT EXISTS(SELECT 1 FROM " TAGS_TABLE_NAME " WHERE tag_name=? LIMIT 1);", -1, &stmt, NULL);
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
 		return -1;
@@ -116,7 +118,7 @@ int add_new_tag(sqlite3 *db, char *tagName) {
 
 	sqlite3_stmt *stmt;
 
-	int rc = sqlite3_prepare_v2(db, "INSERT INTO " TAGS_TABLE_NAME " (name) VALUES(?);", -1, &stmt, NULL);
+	int rc = sqlite3_prepare_v2(db, "INSERT INTO " TAGS_TABLE_NAME " (tag_name) VALUES(?);", -1, &stmt, NULL);
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
 		return -1;
@@ -191,7 +193,7 @@ int add_new_listing(sqlite3 *db, char *listingName, enum LISTING_TYPE type, char
 		return -1;
 	}
 
-	// check that listingName consists only of a-z, A-Z and 0-9 symbols
+	// check that listingName consists only of a-z, A-Z and 0-9 symbols TODO: not required anymore
 	size_t i;
 	for (i = 0; i < strlen(listingName); i++) {
 		 if (!(listingName[i] >= 'a' && listingName[i] <= 'z') &&
@@ -207,7 +209,7 @@ int add_new_listing(sqlite3 *db, char *listingName, enum LISTING_TYPE type, char
 	// ADDING LISTING TO THE LISTINGS TABLE
 
 	int rc = sqlite3_prepare_v2(db,
-		"INSERT INTO " LISTINGS_TABLE_NAME " (name,type,path) VALUES(?,?,?);", -1, &stmt, NULL);
+		"INSERT INTO " LISTINGS_TABLE_NAME " (listing_name,listing_type,listing_path) VALUES(?,?,?);", -1, &stmt, NULL);
 
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
@@ -242,6 +244,7 @@ int add_new_listing(sqlite3 *db, char *listingName, enum LISTING_TYPE type, char
 	if (rc == SQLITE_DONE) {
 		sqlite3_finalize(stmt);
 		free(absolutePath);
+		return 1;
 	} else if (rc == SQLITE_CONSTRAINT) { // Listing already exists
 		sqlite3_finalize(stmt);
 		free(absolutePath);
@@ -252,39 +255,20 @@ int add_new_listing(sqlite3 *db, char *listingName, enum LISTING_TYPE type, char
 		free(absolutePath);
 		return -1;
 	}
-
-	// CREATING A NEW TABLE FOR THE LISTING
-	static const char table_sql[] =  "CREATE TABLE %s ("
-						"id INTEGER PRIMARY KEY NOT NULL,"
-						"name TEXT NOT NULL,"
-						"relpath TEXT NOT NULL UNIQUE,"
-						"tags TEXT"
-						")";
-	size_t bytes_to_alloc = snprintf(NULL, 0, table_sql, listingName) + 1;
-	char * sql = malloc(bytes_to_alloc);
-	snprintf(sql, bytes_to_alloc, table_sql, listingName);
-
-	if (execute_sql_string(db, sql)) {
-		free(sql);
-		return -1;
-	}
-
-	free(sql);
-	return 1;
 }
 
 //TODO rewrite without using recursion and with an ability to report progress
 /**
  * Helper function to recursively refresh a listing
  * @param db SQLite database
- * @param insert_sql SQL string to use when inserting items
+ * @param listing_id listing id
  * @param type listing type
  * @param listing_root_path_nbytes length of the listing's root filepath in bytes
  * @param path path to scan
  * @return `0` if the path was scanned successfully, otherwise `-1` on error
  */
-int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
-							  enum LISTING_TYPE type, size_t listing_root_path_nbytes, const char *path) {
+int refresh_listing_recursive(sqlite3 *db, int64_t listing_id, enum LISTING_TYPE type,
+							  size_t listing_root_path_nbytes, const char *path) {
 	sqlite3_stmt *stmt;
 	int rc;
 	char name[256], *relpath, *dot, *subdir_path;
@@ -293,13 +277,13 @@ int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
 	DIR *dr = opendir(path);
 
 	if (dr == NULL) {
-		fprintf(stderr, "Could not open directory: %s\n", path);
+		fprintf(stderr, "Could not open directory: '%s'\n", path);
 		return -1;
 	}
 
-	rc = sqlite3_prepare_v2(db, insert_sql, -1, &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, "INSERT OR IGNORE INTO " ITEMS_TABLE_NAME " (item_name, item_relpath, listing_id) VALUES (?,?,?);", -1, &stmt, NULL);
 	if (rc != SQLITE_OK) {
-		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+		fprintf(stderr, "Error when preparing SQL query: '%s'\n", sqlite3_errmsg(db));
 		sqlite3_finalize(stmt);
 		closedir(dr);
 		return -1;
@@ -307,7 +291,7 @@ int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
 
 	while ((de = readdir(dr)) != NULL) {
 		if (de->d_type == DT_DIR && (strcmp(de->d_name, "..") == 0 || strcmp(de->d_name, ".") == 0)) continue; // skip .. and . dirs
-		//fprintf(stderr, "Checking entry: %s\n", de->d_name);
+		// fprintf(stderr, "Checking entry: %s\n", de->d_name);
 		if (de->d_type == DT_DIR && type == FILE_AS_ITEM) {
 			// scan all subdirs for files
 			subdir_bytes = snprintf(NULL, 0, "%s/%s", path, de->d_name) + 1;
@@ -318,7 +302,7 @@ int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
 				return -1;
 			}
 			snprintf(subdir_path, subdir_bytes, "%s/%s", path, de->d_name);
-			if (refresh_listing_recursive(db, insert_sql, type, listing_root_path_nbytes, subdir_path)) {
+			if (refresh_listing_recursive(db, listing_id, type, listing_root_path_nbytes, subdir_path)) {
 				free(subdir_path);
 				sqlite3_finalize(stmt);
 				closedir(dr);
@@ -344,7 +328,7 @@ int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
 				name[dot - de->d_name] = '\0';
 			}
 		}
-		//fprintf(stderr, "Name will be: %s, ", name);
+		// fprintf(stderr, "Name will be: %s, ", name);
 
 		// get relpath
 		relpath = malloc(strlen(path) + strlen(de->d_name) - listing_root_path_nbytes + 2);
@@ -356,7 +340,7 @@ int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
 		memcpy(relpath, path+listing_root_path_nbytes, strlen(path)-listing_root_path_nbytes);
 		relpath[strlen(path)-listing_root_path_nbytes] = '/';
 		strcpy(relpath+strlen(path)-listing_root_path_nbytes+1, de->d_name);
-		//fprintf(stderr, "Relpath will be: %s\n", relpath);
+		// fprintf(stderr, "Relpath will be: %s\n", relpath);
 
 		// reset sql statement
 		sqlite3_reset(stmt);
@@ -372,6 +356,15 @@ int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
 		}
 
 		rc = sqlite3_bind_text(stmt, 2, relpath, -1, NULL);
+		if (rc != SQLITE_OK) {
+			fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+			sqlite3_finalize(stmt);
+			free(relpath);
+			closedir(dr);
+			return -1;
+		}
+
+		rc = sqlite3_bind_int64(stmt, 3, listing_id);
 		if (rc != SQLITE_OK) {
 			fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
 			sqlite3_finalize(stmt);
@@ -402,21 +395,21 @@ int refresh_listing_recursive(sqlite3 *db, const char *insert_sql,
  * @param listing_id id of the listing to refresh
  * @return `0` if the listing was refreshed successfully, otherwise `-1` on error
  */
-int refresh_listing(sqlite3 *db, int listing_id) {
+int refresh_listing(sqlite3 *db, int64_t listing_id) {
 	sqlite3_stmt *stmt;
-	char *listing_name, *path;
+	char *path;
 	enum LISTING_TYPE type;
 	size_t malloc_bytes;
 
 	int rc = sqlite3_prepare_v2(db,
-		"SELECT name,type,path FROM " LISTINGS_TABLE_NAME " WHERE id=? LIMIT 1;", -1, &stmt, NULL);
+		"SELECT listing_type,listing_path FROM " LISTINGS_TABLE_NAME " WHERE listing_id=? LIMIT 1;", -1, &stmt, NULL);
 
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
 		return -1;
 	}
 
-	rc = sqlite3_bind_int(stmt, 1, listing_id);
+	rc = sqlite3_bind_int64(stmt, 1, listing_id);
 	if (rc != SQLITE_OK) {
 		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
 		sqlite3_finalize(stmt);
@@ -425,25 +418,15 @@ int refresh_listing(sqlite3 *db, int listing_id) {
 
 	rc = sqlite3_step(stmt);
 	if (rc == SQLITE_ROW) {
-		malloc_bytes = sqlite3_column_bytes(stmt, 0);
-		listing_name = malloc(malloc_bytes + 1);
-		if (listing_name == NULL) {
-			sqlite3_finalize(stmt);
-			return -1;
-		}
-		memcpy(listing_name, sqlite3_column_text(stmt, 0), malloc_bytes);
-		listing_name[malloc_bytes] = '\0';
+		type = (enum LISTING_TYPE) sqlite3_column_int(stmt, 0);
 
-		type = (enum LISTING_TYPE) sqlite3_column_int(stmt, 1);
-
-		malloc_bytes = sqlite3_column_bytes(stmt, 2);
+		malloc_bytes = sqlite3_column_bytes(stmt, 1);
 		path = malloc(malloc_bytes + 1);
 		if (path == NULL) {
 			sqlite3_finalize(stmt);
-			free(listing_name);
 			return -1;
 		}
-		memcpy(path, sqlite3_column_text(stmt, 2), malloc_bytes);
+		memcpy(path, sqlite3_column_text(stmt, 1), malloc_bytes);
 		path[malloc_bytes] = '\0';
 	} else {
 		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
@@ -451,23 +434,13 @@ int refresh_listing(sqlite3 *db, int listing_id) {
 		return -1;
 	}
 	sqlite3_finalize(stmt);
-	//fprintf(stderr, "name: %s, type: %d, path: %s\n", listing_name, type, path);
+	// fprintf(stderr, "type: %d, path: %s\n", type, path);
 
-	const char *sql = "INSERT OR IGNORE INTO %s (name, relpath) VALUES (?,?);";
-	size_t sqlbytes = snprintf(NULL, 0, sql, listing_name);
-	char *sqlmalloced = malloc(sqlbytes);
-	if (sqlmalloced == NULL) return -1;
-	snprintf(sqlmalloced, sqlbytes, sql, listing_name);
-	free(listing_name);
-	//fprintf(stderr, "INSERT SQL: %s\n", sqlmalloced);
-
-	if (!refresh_listing_recursive(db, sqlmalloced, type, strlen((const char*)path), (const char*)path)) {
-		free(sqlmalloced);
+	if (refresh_listing_recursive(db, listing_id, type, strlen((const char*)path), (const char*)path)) {
 		free(path);
 		return -1;
 	}
 
-	free(sqlmalloced);
 	free(path);
 	return 0;
 }
@@ -484,11 +457,11 @@ int init_tables(sqlite3 *db) {
 		fputs("Main Listings table not found, creating new one...\n", stderr);
 
 		// Creating LISTINGS table
-		static const char listings_table_sql[] = "CREATE TABLE " LISTINGS_TABLE_NAME " ("
-								   "id INTEGER PRIMARY KEY NOT NULL,"
-								   "name TEXT NOT NULL UNIQUE,"
-								   "type INT NOT NULL,"
-								   "path TEXT NOT NULL UNIQUE"
+		static const char listings_table_sql[] = "CREATE TABLE IF NOT EXISTS " LISTINGS_TABLE_NAME " ("
+								   "listing_id INTEGER PRIMARY KEY NOT NULL,"
+								   "listing_name TEXT NOT NULL UNIQUE,"
+								   "listing_type INT NOT NULL,"
+								   "listing_path TEXT NOT NULL UNIQUE"
 								   ")";
 
 		if (!execute_sql_string(db, (char*) listings_table_sql)) {
@@ -504,15 +477,57 @@ int init_tables(sqlite3 *db) {
 		fputs("Tags table not found, creating new one...\n", stderr);
 
 		// Creating TAGS table
-		static const char tags_table_sql[] = "CREATE TABLE " TAGS_TABLE_NAME " ("
-								   "id INTEGER PRIMARY KEY NOT NULL,"
-								   "name TEXT NOT NULL UNIQUE"
+		static const char tags_table_sql[] = "CREATE TABLE IF NOT EXISTS " TAGS_TABLE_NAME " ("
+								   "tag_id INTEGER PRIMARY KEY NOT NULL,"
+								   "tag_name TEXT NOT NULL UNIQUE"
 								   ")";
 
 		if (!execute_sql_string(db, (char*) tags_table_sql)) {
 			fputs("Tags table created successfully\n", stderr);
 		} else {
 			fputs("Tags table could not be created\n", stderr);
+			return -1;
+		}
+	}
+
+	// Table with items
+	if (!table_exists(db, ITEMS_TABLE_NAME)) {
+		fputs("Items table not found, creating new one...\n", stderr);
+
+		// Creating ITEMS table
+		static const char items_table_sql[] = "CREATE TABLE IF NOT EXISTS " ITEMS_TABLE_NAME " ("
+								   "item_id INTEGER PRIMARY KEY NOT NULL,"
+								   "item_name TEXT NOT NULL UNIQUE,"
+								   "item_relpath TEXT NOT NULL UNIQUE,"
+								   "listing_id INTEGER NOT NULL,"
+								   "FOREIGN KEY (listing_id) REFERENCES " LISTINGS_TABLE_NAME "(listing_id) ON UPDATE CASCADE ON DELETE CASCADE"
+								   ")";
+
+		if (!execute_sql_string(db, (char*) items_table_sql)) {
+			fputs("Items table created successfully\n", stderr);
+		} else {
+			fputs("Items table could not be created\n", stderr);
+			return -1;
+		}
+	}
+	
+	// Table with items to tags mapping
+	if (!table_exists(db, ITEM_TAGS_TABLE_NAME)) {
+		fputs("Item_tags table not found, creating new one...\n", stderr);
+
+		// Creating ITEM_TAGS table
+		static const char item_tags_table_sql[] = "CREATE TABLE IF NOT EXISTS " ITEM_TAGS_TABLE_NAME " ("
+								   "item_id INTEGER NOT NULL,"
+								   "tag_id INTEGER NOT NULL,"
+								   "FOREIGN KEY (item_id) REFERENCES " ITEMS_TABLE_NAME "(item_id) ON UPDATE CASCADE ON DELETE CASCADE,"
+								   "FOREIGN KEY (tag_id) REFERENCES " TAGS_TABLE_NAME "(tag_id) ON UPDATE CASCADE ON DELETE CASCADE,"
+								   "PRIMARY KEY (item_id, tag_id)"
+								   ")";
+
+		if (!execute_sql_string(db, (char*) item_tags_table_sql)) {
+			fputs("Item_tags table created successfully\n", stderr);
+		} else {
+			fputs("Item_tags table could not be created\n", stderr);
 			return -1;
 		}
 	}
