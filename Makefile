@@ -29,3 +29,10 @@ testleaks: tagger
          --verbose \
          ./tagger
 
+build/test.o: src/test.c
+	$(CC) $(CFLAGS) -c src/test.c -o build/test.o
+
+test: clean initfolders build/test.o build/database.o
+	$(CC) build/test.o build/database.o $(LDFLAGS) -o test
+	./test
+
