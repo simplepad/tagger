@@ -1,5 +1,7 @@
 build/
 .vscode/
 .idea/
+.cache/
 tagger
+test
 test.tdb
