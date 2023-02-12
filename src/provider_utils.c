@@ -4,7 +4,7 @@
 #include <curl/curl.h>
 #include "../include/provider_utils.h"
 
-struct response* init_response() {
+struct response* init_response(void) {
 	struct response* r;
 	r = malloc(sizeof(struct response));
 	if (r == NULL) {
