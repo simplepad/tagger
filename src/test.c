@@ -57,17 +57,32 @@ int main(void) {
 		return -1;
 	}
 
+	if (get_listing_size(database, 1) != 0) {
+		fputs("Listing should be empty!\n", stderr);
+		return -1;
+	}
+
 	if (refresh_listing(database, 1) != 0) {
 		fputs("Could not refresh a FILE_AS_ITEM listing\n", stderr);
 		return -1;
 	}
-	
-	// TODO: check the number of items in the listing
 
+	if (get_listing_size(database, 1) != 5) {
+		fputs("Listing has wrong size!\n", stderr);
+		return -1;
+	}
+	
 	if (refresh_listing(database, 1) != 0) {
 		fputs("Could not refresh a FILE_AS_ITEM listing the second time\n", stderr);
 		return -1;
 	}
+
+	if (get_listing_size(database, 1) != 5) {
+		fputs("Listing has wrong size after the second refresh!\n", stderr);
+		return -1;
+	}
+
+	// TODO test DIR_AS_ITEM, move the refresh tests in a separate function
 
 	// Removing temp files
 	for (size_t i = 0; i<5; i++) {
