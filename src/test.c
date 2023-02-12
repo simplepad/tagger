@@ -4,23 +4,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-int main(void) {
-	sqlite3 *database;
-	database = open_database(NULL);
-
-	if (database == NULL) {
-		fputs("Could not open database\n", stderr);
-		return -1;
-	}
-
-	if (init_tables(database)) {
-		// something went wrong when initializing tables
-		fputs("Could not initialize tables\n", stderr);
-		close_database(database);
-		return -1;
-	}
-	fputs("Tables init test passed\n", stderr);
-
+int test_listing_refresh(sqlite3 *database) {
 	// Testing listing addition
 	char pattern[] = "/tmp/tmp.XXXXXX";
 	char* temp_dir = mkdtemp(pattern);
@@ -28,7 +12,7 @@ int main(void) {
 		fputs("Could not create a temp directory\n", stderr);
 		return -1;
 	}
-	fprintf(stderr, "%s\n", temp_dir);
+	fprintf(stderr, "Using temp directory: %s\n", temp_dir);
 
 	char dir1[sizeof(pattern)+4];
 	sprintf(dir1, "%s/d1", temp_dir);
@@ -82,7 +66,7 @@ int main(void) {
 		return -1;
 	}
 
-	// TODO test DIR_AS_ITEM, move the refresh tests in a separate function
+	// TODO test DIR_AS_ITEM
 
 	// Removing temp files
 	for (size_t i = 0; i<5; i++) {
@@ -90,10 +74,37 @@ int main(void) {
 	}
 	remove(dir1);
 	remove(temp_dir);
-	
+
+	return 0;
+}
+
+int main(void) {
+	sqlite3 *database;
+	database = open_database(NULL);
+
+	if (database == NULL) {
+		fputs("Could not open database\n", stderr);
+		return -1;
+	}
+
+	if (init_tables(database)) {
+		// something went wrong when initializing tables
+		fputs("Could not initialize tables\n", stderr);
+		close_database(database);
+		return -1;
+	}
+	fputs("Tables init test passed\n", stderr);
+
+	if (test_listing_refresh(database)) {
+		fputs("Listings tests failed\n", stderr);
+		close_database(database);
+		return -1;
+	}
+	fputs("Listings tests passed\n", stderr);
 
 	close_database(database);
 
 	fputs("All tests passed\n", stderr);
 	return 0;
 }
+
