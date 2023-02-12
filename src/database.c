@@ -14,51 +14,6 @@
 #define DATABASE_DEFAULT_LOCATION "test.tdb"
 
 /**
- * Check if the table already exists in the database
- *
- * @param db pointer to SQLite3 database
- * @param tableName table name to search for
- * @return `1` if the table exists, `0` if the table does not exist and `-1` on error
- */
-int table_exists(sqlite3 *db, char *tableName) {
-
-	if (!db || !tableName) {
-		return -1;
-	}
-
-	sqlite3_stmt *stmt;
-
-	int rc = sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;", -1, &stmt, NULL);
-	if (rc != SQLITE_OK) {
-		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
-		return -1;
-	}
-
-	// 1 here means leftmost SQL parameter index
-	rc = sqlite3_bind_text(stmt, 1, tableName, -1, NULL);
-	if (rc != SQLITE_OK) {
-		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
-		sqlite3_finalize(stmt);
-		return -1;
-	}
-
-	rc = sqlite3_step(stmt);
-	if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
-		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
-		sqlite3_finalize(stmt);
-		return -1;
-	} else if (rc == SQLITE_ROW) {
-		// Table found
-		sqlite3_finalize(stmt);
-		return 1;
-	} else {
-		// Table not found
-		sqlite3_finalize(stmt);
-		return 0;
-	}
-}
-
-/**
  * Check if tag already exists in the database
  *
  * @param db SQLite3 database to search the tag in, must be initialized
@@ -491,84 +446,64 @@ int get_listing_size(sqlite3 *db, int64_t listing_id) {
  * @return `0` if all required tables are initialized,  otherwise `-1` on error
  */
 int init_tables(sqlite3 *db) {
-	// Table with Listings
-	if (!table_exists(db, LISTINGS_TABLE_NAME)) {
-		fputs("Main Listings table not found, creating new one...\n", stderr);
+	// Creating LISTINGS table
+	static const char listings_table_sql[] = "CREATE TABLE IF NOT EXISTS " LISTINGS_TABLE_NAME " ("
+							   "listing_id INTEGER PRIMARY KEY NOT NULL,"
+							   "listing_name TEXT NOT NULL UNIQUE,"
+							   "listing_type INT NOT NULL,"
+							   "listing_path TEXT NOT NULL UNIQUE"
+							   ")";
 
-		// Creating LISTINGS table
-		static const char listings_table_sql[] = "CREATE TABLE IF NOT EXISTS " LISTINGS_TABLE_NAME " ("
-								   "listing_id INTEGER PRIMARY KEY NOT NULL,"
-								   "listing_name TEXT NOT NULL UNIQUE,"
-								   "listing_type INT NOT NULL,"
-								   "listing_path TEXT NOT NULL UNIQUE"
-								   ")";
-
-		if (!execute_sql_string(db, (char*) listings_table_sql)) {
-			fputs("Main Listings table created successfully\n", stderr);
-		} else {
-			fputs("Main Listings table could not be created\n", stderr);
-			return -1;
-		}
+	if (!execute_sql_string(db, (char*) listings_table_sql)) {
+		fputs("Main Listings table created successfully\n", stderr);
+	} else {
+		fputs("Main Listings table could not be created\n", stderr);
+		return -1;
 	}
 
-	// Table with tags
-	if (!table_exists(db, TAGS_TABLE_NAME)) {
-		fputs("Tags table not found, creating new one...\n", stderr);
+	// Creating TAGS table
+	static const char tags_table_sql[] = "CREATE TABLE IF NOT EXISTS " TAGS_TABLE_NAME " ("
+							   "tag_id INTEGER PRIMARY KEY NOT NULL,"
+							   "tag_name TEXT NOT NULL UNIQUE"
+							   ")";
 
-		// Creating TAGS table
-		static const char tags_table_sql[] = "CREATE TABLE IF NOT EXISTS " TAGS_TABLE_NAME " ("
-								   "tag_id INTEGER PRIMARY KEY NOT NULL,"
-								   "tag_name TEXT NOT NULL UNIQUE"
-								   ")";
-
-		if (!execute_sql_string(db, (char*) tags_table_sql)) {
-			fputs("Tags table created successfully\n", stderr);
-		} else {
-			fputs("Tags table could not be created\n", stderr);
-			return -1;
-		}
+	if (!execute_sql_string(db, (char*) tags_table_sql)) {
+		fputs("Tags table created successfully\n", stderr);
+	} else {
+		fputs("Tags table could not be created\n", stderr);
+		return -1;
 	}
 
-	// Table with items
-	if (!table_exists(db, ITEMS_TABLE_NAME)) {
-		fputs("Items table not found, creating new one...\n", stderr);
+	// Creating ITEMS table
+	static const char items_table_sql[] = "CREATE TABLE IF NOT EXISTS " ITEMS_TABLE_NAME " ("
+							   "item_id INTEGER PRIMARY KEY NOT NULL,"
+							   "item_name TEXT NOT NULL UNIQUE,"
+							   "item_relpath TEXT NOT NULL UNIQUE,"
+							   "listing_id INTEGER NOT NULL,"
+							   "FOREIGN KEY (listing_id) REFERENCES " LISTINGS_TABLE_NAME "(listing_id) ON UPDATE CASCADE ON DELETE CASCADE"
+							   ")";
 
-		// Creating ITEMS table
-		static const char items_table_sql[] = "CREATE TABLE IF NOT EXISTS " ITEMS_TABLE_NAME " ("
-								   "item_id INTEGER PRIMARY KEY NOT NULL,"
-								   "item_name TEXT NOT NULL UNIQUE,"
-								   "item_relpath TEXT NOT NULL UNIQUE,"
-								   "listing_id INTEGER NOT NULL,"
-								   "FOREIGN KEY (listing_id) REFERENCES " LISTINGS_TABLE_NAME "(listing_id) ON UPDATE CASCADE ON DELETE CASCADE"
-								   ")";
-
-		if (!execute_sql_string(db, (char*) items_table_sql)) {
-			fputs("Items table created successfully\n", stderr);
-		} else {
-			fputs("Items table could not be created\n", stderr);
-			return -1;
-		}
+	if (!execute_sql_string(db, (char*) items_table_sql)) {
+		fputs("Items table created successfully\n", stderr);
+	} else {
+		fputs("Items table could not be created\n", stderr);
+		return -1;
 	}
 	
-	// Table with items to tags mapping
-	if (!table_exists(db, ITEM_TAGS_TABLE_NAME)) {
-		fputs("Item_tags table not found, creating new one...\n", stderr);
+	// Creating ITEM_TAGS table
+	static const char item_tags_table_sql[] = "CREATE TABLE IF NOT EXISTS " ITEM_TAGS_TABLE_NAME " ("
+							   "item_id INTEGER NOT NULL,"
+							   "tag_id INTEGER NOT NULL,"
+							   "FOREIGN KEY (item_id) REFERENCES " ITEMS_TABLE_NAME "(item_id) ON UPDATE CASCADE ON DELETE CASCADE,"
+							   "FOREIGN KEY (tag_id) REFERENCES " TAGS_TABLE_NAME "(tag_id) ON UPDATE CASCADE ON DELETE CASCADE,"
+							   "PRIMARY KEY (item_id, tag_id)"
+							   ")";
 
-		// Creating ITEM_TAGS table
-		static const char item_tags_table_sql[] = "CREATE TABLE IF NOT EXISTS " ITEM_TAGS_TABLE_NAME " ("
-								   "item_id INTEGER NOT NULL,"
-								   "tag_id INTEGER NOT NULL,"
-								   "FOREIGN KEY (item_id) REFERENCES " ITEMS_TABLE_NAME "(item_id) ON UPDATE CASCADE ON DELETE CASCADE,"
-								   "FOREIGN KEY (tag_id) REFERENCES " TAGS_TABLE_NAME "(tag_id) ON UPDATE CASCADE ON DELETE CASCADE,"
-								   "PRIMARY KEY (item_id, tag_id)"
-								   ")";
-
-		if (!execute_sql_string(db, (char*) item_tags_table_sql)) {
-			fputs("Item_tags table created successfully\n", stderr);
-		} else {
-			fputs("Item_tags table could not be created\n", stderr);
-			return -1;
-		}
+	if (!execute_sql_string(db, (char*) item_tags_table_sql)) {
+		fputs("Item_tags table created successfully\n", stderr);
+	} else {
+		fputs("Item_tags table could not be created\n", stderr);
+		return -1;
 	}
 
 	return 0;
