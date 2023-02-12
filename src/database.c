@@ -446,6 +446,45 @@ int refresh_listing(sqlite3 *db, int64_t listing_id) {
 }
 
 /**
+ * @brief Get the number of items in a listing
+ *
+ * @param db sqlite database
+ * @param listing_id id of the listing
+ * @return the number of items in the listing, or `-1` on error
+ */
+int get_listing_size(sqlite3 *db, int64_t listing_id) {
+	sqlite3_stmt *stmt;
+	int count = 0;
+
+	int rc = sqlite3_prepare_v2(db,
+		"SELECT COUNT(*) FROM " ITEMS_TABLE_NAME " WHERE listing_id=?;", -1, &stmt, NULL);
+
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	rc = sqlite3_bind_int64(stmt, 1, listing_id);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc == SQLITE_ROW) {
+		count = sqlite3_column_int(stmt, 0);
+	} else {
+		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+	sqlite3_finalize(stmt);
+	
+	return count;
+}
+
+/**
  * Initialize all required tables in the provided database, creates them if they don't exist
  *
  * @param db pointer to SQLite3 database
