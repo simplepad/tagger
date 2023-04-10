@@ -128,7 +128,7 @@ int execute_sql_string(sqlite3 *db, char *sql) {
  * @param listingPath listing path, must be unique
  * @return `1` if the listing was added, `0` if listing already exists, `-1` on error
  */
-int add_new_listing(sqlite3 *db, char *listingName, enum LISTING_TYPE type, char *listingPath) {
+int add_new_listing(sqlite3 *db, char *listingName, LISTING_TYPE type, char *listingPath) {
 	// check if the path exists and points to a directory
 	char *absolutePath = realpath(listingPath, NULL);
 	if (absolutePath == NULL) {
@@ -222,7 +222,7 @@ int add_new_listing(sqlite3 *db, char *listingName, enum LISTING_TYPE type, char
  * @param path path to scan
  * @return `0` if the path was scanned successfully, otherwise `-1` on error
  */
-int refresh_listing_recursive(sqlite3 *db, int64_t listing_id, enum LISTING_TYPE type,
+int refresh_listing_recursive(sqlite3 *db, int64_t listing_id, LISTING_TYPE type,
 							  size_t listing_root_path_nbytes, const char *path) {
 	sqlite3_stmt *stmt;
 	int rc;
@@ -353,7 +353,7 @@ int refresh_listing_recursive(sqlite3 *db, int64_t listing_id, enum LISTING_TYPE
 int refresh_listing(sqlite3 *db, int64_t listing_id) {
 	sqlite3_stmt *stmt;
 	char *path;
-	enum LISTING_TYPE type;
+	LISTING_TYPE type;
 	size_t malloc_bytes;
 
 	int rc = sqlite3_prepare_v2(db,
@@ -373,7 +373,7 @@ int refresh_listing(sqlite3 *db, int64_t listing_id) {
 
 	rc = sqlite3_step(stmt);
 	if (rc == SQLITE_ROW) {
-		type = (enum LISTING_TYPE) sqlite3_column_int(stmt, 0);
+		type = (LISTING_TYPE) sqlite3_column_int(stmt, 0);
 
 		malloc_bytes = sqlite3_column_bytes(stmt, 1);
 		path = malloc(malloc_bytes + 1);
