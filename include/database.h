@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 typedef enum {DIR_AS_ITEM = 0, FILE_AS_ITEM = 1, ANY_AS_ITEM = 2} LISTING_TYPE;
+typedef enum {AUTO_ADD_TAGS, DONT_AUTO_ADD_TAGS} ON_NEW_TAGS;
 
 int64_t add_new_tag(sqlite3 *db, char *tagName);
 int add_new_listing(sqlite3 *db, char *name, LISTING_TYPE type, char *path);

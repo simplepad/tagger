@@ -78,6 +78,62 @@ int test_listing_refresh(sqlite3 *database) {
 	return 0;
 }
 
+extern int64_t get_tag_id(sqlite3 *db, char *tag_name);
+int test_add_tag(sqlite3 *database) {
+	if (get_tag_id(database, "tag1") != 0) {
+		fputs("Error when getting tag id or tag exists already\n", stderr);
+		return -1;
+	}
+
+	if (get_tag_id(database, "tag2") != 0) {
+		fputs("Error when getting tag id or tag exists already\n", stderr);
+		return -1;
+	}
+
+	int64_t tag_id;
+	if ((tag_id = add_new_tag(database, "tag1")) <= 0) {
+		fputs("Could not add new tag\n", stderr);
+		return -1;
+	}
+
+	if (get_tag_id(database, "tag1") != tag_id) {
+		fputs("Error when getting tag id or tag doesn't exist or wrong tag id\n", stderr);
+		return -1;
+	}
+
+	return 0;
+}
+
+extern int update_tags(sqlite3 *db, int64_t item_id, char **tags, ON_NEW_TAGS on_new_tags);
+int test_update_tags(sqlite3 *database) {
+	const char tag3_name[] = "tag3";
+	const char tag4_name[] = "tag4";
+	const char *tag_names[] = {tag3_name, tag4_name, NULL};
+	const char *tag_names2[] = {tag4_name, NULL};
+
+	if (update_tags(database, 1, (char**) tag_names, DONT_AUTO_ADD_TAGS) != -1) {
+		fputs("Error, expected the update_tags() function to return -1\n", stderr);
+		return -1;
+	}
+
+	if (update_tags(database, 1, (char**) tag_names, AUTO_ADD_TAGS) != 1) {
+		fputs("Error, expected the update_tags() function to return 1\n", stderr);
+		return -1;
+	}
+
+	if (get_tag_id(database, (char*) tag3_name) <= 0 || get_tag_id(database, (char*) tag4_name) <= 0) {
+		fputs("Error, expected the new tags to exist in the database after item update\n", stderr);
+		return -1;
+	}
+
+	if (update_tags(database, 1, (char**) tag_names2, AUTO_ADD_TAGS) != 0) {
+		fputs("Error, expected the update_tags() function to return 0\n", stderr);
+		return -1;
+	}
+
+	return 0;
+}
+
 int main(void) {
 	sqlite3 *database;
 	database = open_database(NULL);
