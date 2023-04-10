@@ -64,9 +64,9 @@ int tag_exists(sqlite3 *db, char *tagName) {
  *
  * @param db SQLite3 database to add the tag to, must be initialized
  * @param tagName new tag's name
- * @return `1` if the tag was added, `0` if tag already exists, `-1` on error
+ * @return `tag_id` if the tag was added, `0` if tag already exists, `-1` on error
  */
-int add_new_tag(sqlite3 *db, char *tagName) {
+int64_t add_new_tag(sqlite3 *db, char *tagName) {
 	if (db == NULL || tagName == NULL) {
 		return -1;
 	}
@@ -90,7 +90,7 @@ int add_new_tag(sqlite3 *db, char *tagName) {
 	rc = sqlite3_step(stmt);
 	if (rc == SQLITE_DONE) {
 		sqlite3_finalize(stmt);
-		return 1;
+		return sqlite3_last_insert_rowid(db);
 	} else if (rc == SQLITE_CONSTRAINT) { // Tag already exists
 		sqlite3_finalize(stmt);
 		return 0;
