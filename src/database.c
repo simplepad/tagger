@@ -144,6 +144,36 @@ int64_t get_tag_id(sqlite3 *db, char *tag_name) {
 	}
 }
 
+int get_item_tags_count(sqlite3 *db, int64_t item_id) {
+	sqlite3_stmt *stmt;
+
+	int tag_count = -1;
+	int rc = sqlite3_prepare_v2(db, "SELECT count() FROM " ITEM_TAGS_TABLE_NAME " WHERE item_id=?;", -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	// 1 here means leftmost SQL parameter index
+	rc = sqlite3_bind_int64(stmt, 1, item_id);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc == SQLITE_ROW) {
+		tag_count = sqlite3_column_int64(stmt, 0);
+		sqlite3_finalize(stmt);
+		return tag_count;
+	} else {
+		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+}
+
 /**
  * @brief Update item's tags to include those supplied in the provided tag array
  *
