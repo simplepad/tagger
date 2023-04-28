@@ -104,19 +104,28 @@ int test_add_tag(sqlite3 *database) {
 	return 0;
 }
 
+extern int get_item_tags_count(sqlite3 *db, int64_t item_id);
 extern int update_tags(sqlite3 *db, int64_t item_id, char **tags, ON_NEW_TAGS on_new_tags);
 int test_update_tags(sqlite3 *database) {
+	const int64_t item_id = 1;
+	// tags already in the database: tag1, tag2
+	const char tag2_name[] = "tag2";
 	const char tag3_name[] = "tag3";
 	const char tag4_name[] = "tag4";
-	const char *tag_names[] = {tag3_name, tag4_name, NULL};
+	const char *tag_names[] = {tag2_name, tag3_name, tag4_name, NULL};
 	const char *tag_names2[] = {tag4_name, NULL};
 
-	if (update_tags(database, 1, (char**) tag_names, DONT_AUTO_ADD_TAGS) != -1) {
+	if (update_tags(database, item_id, (char**) tag_names, DONT_AUTO_ADD_TAGS) != -1) {
 		fputs("Error, expected the update_tags() function to return -1\n", stderr);
 		return -1;
 	}
 
-	if (update_tags(database, 1, (char**) tag_names, AUTO_ADD_TAGS) != 1) {
+	if (get_item_tags_count(database, item_id) != 0) {
+		fputs("Error, expected the item not to have any tags after a failed update\n", stderr);
+		return -1;
+	}
+
+	if (update_tags(database, item_id, (char**) tag_names, AUTO_ADD_TAGS) != 1) {
 		fputs("Error, expected the update_tags() function to return 1\n", stderr);
 		return -1;
 	}
@@ -126,8 +135,18 @@ int test_update_tags(sqlite3 *database) {
 		return -1;
 	}
 
-	if (update_tags(database, 1, (char**) tag_names2, AUTO_ADD_TAGS) != 0) {
+	if (get_item_tags_count(database, item_id) != sizeof(tag_names) / sizeof(char*) - 1) { // -1 for NULL at the end
+		fputs("Error, expected the item to have the added tags\n", stderr);
+		return -1;
+	}
+
+	if (update_tags(database, item_id, (char**) tag_names2, AUTO_ADD_TAGS) != 0) {
 		fputs("Error, expected the update_tags() function to return 0\n", stderr);
+		return -1;
+	}
+
+	if (get_item_tags_count(database, item_id) != sizeof(tag_names) / sizeof(char*) - 1) { // -1 for NULL at the end
+		fputs("Error, expected the item's number of tags not to change\n", stderr);
 		return -1;
 	}
 
@@ -157,6 +176,20 @@ int main(void) {
 		return -1;
 	}
 	fputs("Listings tests passed\n", stderr);
+
+	if (test_add_tag(database)) {
+		fputs("add_tag() test failed\n", stderr);
+		close_database(database);
+		return -1;
+	}
+	fputs("add_tag() test passed\n", stderr);
+
+	if (test_update_tags(database)) {
+		fputs("update_tags() test failed\n", stderr);
+		close_database(database);
+		return -1;
+	}
+	fputs("update_tags() test passed\n", stderr);
 
 	close_database(database);
 
