@@ -144,6 +144,13 @@ int64_t get_tag_id(sqlite3 *db, char *tag_name) {
 	}
 }
 
+/**
+ * @brief Get the number of tags of an item
+ *
+ * @param db sqlite3 database
+ * @param item_id id of an item to get the tags count of
+ * @return number of tags of an item or `-1` on error
+ */
 int get_item_tags_count(sqlite3 *db, int64_t item_id) {
 	sqlite3_stmt *stmt;
 
