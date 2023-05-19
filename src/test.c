@@ -100,10 +100,11 @@ int test_add_tag(sqlite3 *database) {
 }
 
 extern int get_item_tags_count(sqlite3 *db, int64_t item_id);
+extern int get_total_tags_count(sqlite3 *db);
 extern int update_tags(sqlite3 *db, int64_t item_id, char **tags, ON_NEW_TAGS on_new_tags);
 int test_update_tags(sqlite3 *database) {
 	const int64_t item_id = 1;
-	// tags already in the database: tag1, tag2
+	int total_number_of_tags = 1; // tags already in the database: tag1
 	const char tag2_name[] = "tag2";
 	const char tag3_name[] = "tag3";
 	const char tag4_name[] = "tag4";
@@ -120,10 +121,16 @@ int test_update_tags(sqlite3 *database) {
 		return -1;
 	}
 
+	if (get_total_tags_count(database) != total_number_of_tags) {
+		fputs("Error, expected the total number of tags not to change after a failed update\n", stderr);
+		return -1;
+	}
+
 	if (update_tags(database, item_id, (char**) tag_names, AUTO_ADD_TAGS) != 1) {
 		fputs("Error, expected the update_tags() function to return 1\n", stderr);
 		return -1;
 	}
+	total_number_of_tags += 3;
 
 	if (get_tag_id(database, (char*) tag3_name) <= 0 || get_tag_id(database, (char*) tag4_name) <= 0) {
 		fputs("Error, expected the new tags to exist in the database after item update\n", stderr);
@@ -135,6 +142,11 @@ int test_update_tags(sqlite3 *database) {
 		return -1;
 	}
 
+	if (get_total_tags_count(database) != total_number_of_tags) {
+		fputs("Error, expected the total number of tags to increase by 3\n", stderr);
+		return -1;
+	}
+
 	if (update_tags(database, item_id, (char**) tag_names2, AUTO_ADD_TAGS) != 0) {
 		fputs("Error, expected the update_tags() function to return 0\n", stderr);
 		return -1;
@@ -142,6 +154,11 @@ int test_update_tags(sqlite3 *database) {
 
 	if (get_item_tags_count(database, item_id) != sizeof(tag_names) / sizeof(char*) - 1) { // -1 for NULL at the end
 		fputs("Error, expected the item's number of tags not to change\n", stderr);
+		return -1;
+	}
+
+	if (get_total_tags_count(database) != total_number_of_tags) {
+		fputs("Error, expected the total number of tags not to change\n", stderr);
 		return -1;
 	}
 

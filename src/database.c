@@ -145,6 +145,34 @@ int64_t get_tag_id(sqlite3 *db, char *tag_name) {
 }
 
 /**
+ * @brief Get the total number of tags in the database
+ *
+ * @param db sqlite3 database
+ * @return number of tags or `-1` on error
+ */
+int get_total_tags_count(sqlite3 *db) {
+	sqlite3_stmt *stmt;
+
+	int tag_count = -1;
+	int rc = sqlite3_prepare_v2(db, "SELECT count() FROM " TAGS_TABLE_NAME ";", -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc == SQLITE_ROW) {
+		tag_count = sqlite3_column_int64(stmt, 0);
+		sqlite3_finalize(stmt);
+		return tag_count;
+	} else {
+		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+}
+
+/**
  * @brief Get the number of tags of an item
  *
  * @param db sqlite3 database
