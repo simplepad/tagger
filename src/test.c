@@ -165,6 +165,49 @@ int test_update_tags(sqlite3 *database) {
 	return 0;
 }
 
+int test_get_item_tag_ids(sqlite3 *database) {
+	const int64_t item_id = 1;
+	const int item_tag_ids[] = {2, 3, 4};
+	const int item_tag_ids_size = sizeof(item_tag_ids) / sizeof(int);
+
+	int *tags_array;
+	int tags_array_size;
+
+	// item with id item_id already has tags with ids item_tag_ids
+
+	if (!get_item_tag_ids(database, 5, &tags_array_size, &tags_array)) {
+		fputs("Error, expected an error when getting tag ids for a non-existing item\n", stderr);
+		return -1;
+	}
+
+	if (get_item_tag_ids(database, item_id, &tags_array_size, &tags_array)) {
+		fputs("Error, expected the function to successfully retrieve tag ids\n", stderr);
+		return -1;
+	}
+
+	if (tags_array_size != item_tag_ids_size) {
+		fprintf(stderr, "Error, expected the item to have %d tags\n", item_tag_ids_size);
+		return -1;
+	}
+
+	int tag_found;
+	for (int i = 0; i < item_tag_ids_size; i++) {
+		tag_found = 0;
+		for (int j = 0; j < tags_array_size; j++) {
+			if (item_tag_ids[i] == tags_array[j]) tag_found = 1;
+		}
+
+		if (!tag_found) {
+			fprintf(stderr, "Error, could not found tag with id %d in returned item tags\n", item_tag_ids[i]);
+			free(tags_array);
+			return -1;
+		}
+	}
+
+	free(tags_array);
+	return 0;
+}
+
 int main(void) {
 	sqlite3 *database;
 	database = open_database(NULL);
@@ -203,9 +246,16 @@ int main(void) {
 	}
 	fputs("update_tags() test passed\n", stderr);
 
+	if (test_get_item_tag_ids(database)) {
+		fputs("get_item_tag_ids() test failed\n", stderr);
+		close_database(database);
+		return -1;
+	}
+	fputs("get_item_tag_ids() test passed\n", stderr);
+
 	close_database(database);
 
-	fputs("All tests passed\n", stderr);
+	fputs("----- All tests passed -----\n", stderr);
 	return 0;
 }
 

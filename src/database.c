@@ -210,6 +210,88 @@ int get_item_tags_count(sqlite3 *db, int64_t item_id) {
 }
 
 /**
+ * @brief Get an item's tag ids
+ *
+ * Caller must free the allocated memory. If the return code is `-1`
+ * values in `tags_array_size` and `tags_array` are undefined
+ * and should not be used (caller should not try to free `tags_array`)!
+ *
+ * @param db sqlite3 database
+ * @param item_id id of an item to get the tags of
+ * @param tags_array_size pointer where to store resulting array size
+ * @param tags_array pointer where to store the array of tag ids
+ * @return `0` on success, otherwise `-1` on error
+ */
+int get_item_tag_ids(sqlite3 *db, int64_t item_id, int *tags_array_size, int **tags_array) {
+	if (item_id < 1 || tags_array_size == NULL || tags_array == NULL) { return -1; }
+
+	sqlite3_stmt *stmt;
+
+	// get tags count
+	int tag_count = get_item_tags_count(db, item_id);
+	if (tag_count < 1) {
+		fprintf(stderr, "Error when getting item's tags count for item_id %ld\n", item_id);
+		return -1;
+	}
+
+	// if item has no tags
+	if (tag_count == 0) {
+		*tags_array_size = 0;
+		*tags_array = NULL;
+		return 0;
+	}
+
+	// allocate memory to store tags
+	*tags_array = malloc(tag_count * sizeof(int));
+	if (*tags_array == NULL) {
+		fprintf(stderr, "Error when getting item's tags count for item_id %ld\n", item_id);
+		return -1;
+	}
+
+	// get tags from the database
+	int rc = sqlite3_prepare_v2(db, "SELECT tag_id FROM " ITEM_TAGS_TABLE_NAME " WHERE item_id=?;", -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	// 1 here means leftmost SQL parameter index
+	rc = sqlite3_bind_int64(stmt, 1, item_id);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+
+	// fill tags_array
+	for (int i = 0; i < tag_count; i++) {
+		rc = sqlite3_step(stmt);
+		switch (rc) {
+			case SQLITE_ROW:
+				(*tags_array)[i] = sqlite3_column_int64(stmt, 0);
+				break;
+			case SQLITE_DONE:
+				// less tags than expected!
+				sqlite3_finalize(stmt);
+				fprintf(stderr, "Error while getting item tags for item_id %lu, got less tags than expected!\n", item_id);
+				free(*tags_array);
+				return -1;
+			default:
+				// error
+				sqlite3_finalize(stmt);
+				fprintf(stderr, "Error while getting item tags for item_id %lu, %s\n", item_id, sqlite3_errmsg(db));
+				free(*tags_array);
+				return -1;
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	*tags_array_size = tag_count;
+	return 0;
+}
+
+/**
  * @brief Update item's tags to include those supplied in the provided tag array
  *
  * @param db sqlite3 database
