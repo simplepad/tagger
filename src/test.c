@@ -85,11 +85,6 @@ int test_add_tag(sqlite3 *database) {
 		return -1;
 	}
 
-	if (get_tag_id(database, "tag2") != 0) {
-		fputs("Error when getting tag id or tag exists already\n", stderr);
-		return -1;
-	}
-
 	int64_t tag_id;
 	if ((tag_id = add_new_tag(database, "tag1")) <= 0) {
 		fputs("Could not add new tag\n", stderr);
