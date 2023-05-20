@@ -1,8 +1,33 @@
 #include <stdio.h>
 #include "../include/database.h"
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+extern char * sql_expand_param_into_array(char *sql, size_t param_num, size_t array_size);
+int test_sql_expand_param_into_array(void) {
+	static const char unexpanded[] = "SELECT * FROM TEST WHERE COL1 = ? AND COL2 IN (?)";
+	static const char expanded[] = "SELECT * FROM TEST WHERE COL1 = ? AND COL2 IN (?,?,?)";
+
+	char * result = sql_expand_param_into_array((char*)unexpanded, 2, 3);
+
+	if (result == NULL) {
+		fputs("Error, expected the return value to be a valid pointer\n", stderr);
+		return -1;
+	}
+
+	if (strncmp(expanded, result, sizeof(expanded))) {
+		fputs("Error, expected the return string to be equal to the expanded string\n", stderr);
+		fprintf(stderr, "Expected: %s\n", expanded);
+		fprintf(stderr, "Received: %s\n", result);
+		return -1;
+	}
+
+	free(result);
+
+	return 0;
+}
 
 int test_listing_refresh(sqlite3 *database) {
 	// Testing listing addition
@@ -209,6 +234,15 @@ int test_get_item_tag_ids(sqlite3 *database) {
 }
 
 int main(void) {
+	// testing helper functions
+	
+	if (test_sql_expand_param_into_array()) {
+		fputs("sql_expand_param_into_array test failed!\n", stderr);
+		return -1;
+	}
+
+	// testing database functions
+	
 	sqlite3 *database;
 	database = open_database(NULL);
 

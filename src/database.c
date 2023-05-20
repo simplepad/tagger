@@ -16,6 +16,75 @@
 int execute_sql_string(sqlite3 *db, char *sql);
 
 /**
+ * @brief Expand a parameter in an sql query into an array
+ *
+ * @param sql string with the sql query
+ * @param param_num the number of parameter to expand into an array, index starts with 1 (like in `sqlite3_bind_*` functions)
+ * @param array_size the desired size of the array
+ * @return `NULL` on error or a pointer to the new sql string, the caller is responsible for freeing allocated memory!
+ */
+char * sql_expand_param_into_array(char *sql, size_t param_num, size_t array_size) {
+	if (param_num == 0) {
+		fputs("Wrong param number, index starts with 1!\n", stderr);
+		return NULL;
+	}
+	if (param_num == 1) {
+		return (char*) malloc(sizeof(char) * (strlen(sql) + 1));
+	}
+	param_num--;
+
+	size_t array_start = 0;
+	size_t sql_initial_length = strlen(sql);
+	size_t to_find = param_num;
+
+	// search for the `?` that should become an array
+	for (size_t i = 0; i < sql_initial_length; i++) {
+		if (sql[i] == '?') {
+			if (!to_find) {
+				array_start = i;
+				break;
+			} else {
+				to_find--;
+			}
+		}
+	}
+
+	if (array_start == 0) {
+		fprintf(stderr, "Could not find the %luth parameter\n", param_num+1);
+		return NULL;
+	}
+
+	size_t new_sql_length = sql_initial_length + ((array_size-1) * 2);
+	char * new_sql = malloc(sizeof(char) * (new_sql_length + 1)); // 1 for \0
+	if (new_sql == NULL) {
+		fputs("Could not allocate memory for new sql string\n", stderr);
+		return NULL;
+	}
+
+	size_t bytes_written = 0;
+
+	// copying the start of the original query
+	memcpy(new_sql, sql, sizeof(char) * array_start);
+	bytes_written += sizeof(char) * array_start;
+
+	// adding the array of parameters (-1 because of the original `?` that will be copied later)
+	for (size_t i = 0; i<=param_num; i++) {
+		new_sql[bytes_written] = '?';
+		new_sql[bytes_written+1] = ',';
+		bytes_written += 2;
+	}
+
+	// copying the rest of the original query, including the original ? as the last parameter of the array
+	memcpy(new_sql+bytes_written, sql+array_start, sql_initial_length-array_start);
+	bytes_written += sql_initial_length-array_start;
+
+	// ending the string
+	new_sql[bytes_written] = '\0';
+	
+	return new_sql;
+}
+
+/**
  * Check if tag already exists in the database
  *
  * @param db SQLite3 database to search the tag in, must be initialized
