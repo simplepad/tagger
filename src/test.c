@@ -103,14 +103,14 @@ int test_listing_refresh(sqlite3 *database) {
 	return 0;
 }
 
-extern int64_t get_tag_id(sqlite3 *db, char *tag_name);
+extern sqlite3_int64 get_tag_id(sqlite3 *db, char *tag_name);
 int test_add_tag(sqlite3 *database) {
 	if (get_tag_id(database, "tag1") != 0) {
 		fputs("Error when getting tag id or tag exists already\n", stderr);
 		return -1;
 	}
 
-	int64_t tag_id;
+	sqlite3_int64 tag_id;
 	if ((tag_id = add_new_tag(database, "tag1")) <= 0) {
 		fputs("Could not add new tag\n", stderr);
 		return -1;
@@ -124,11 +124,10 @@ int test_add_tag(sqlite3 *database) {
 	return 0;
 }
 
-extern int get_item_tags_count(sqlite3 *db, int64_t item_id);
+extern int get_item_tags_count(sqlite3 *db, sqlite3_int64 item_id);
 extern int get_total_tags_count(sqlite3 *db);
-extern int update_tags(sqlite3 *db, int64_t item_id, char **tags, ON_NEW_TAGS on_new_tags);
 int test_update_tags(sqlite3 *database) {
-	const int64_t item_id = 1;
+	const sqlite3_int64 item_id = 1;
 	int total_number_of_tags = 1; // tags already in the database: tag1
 	const char tag2_name[] = "tag2";
 	const char tag3_name[] = "tag3";
@@ -191,11 +190,11 @@ int test_update_tags(sqlite3 *database) {
 }
 
 int test_get_item_tag_ids(sqlite3 *database) {
-	const int64_t item_id = 1;
+	const sqlite3_int64 item_id = 1;
 	const int item_tag_ids[] = {2, 3, 4};
 	const int item_tag_ids_size = sizeof(item_tag_ids) / sizeof(int);
 
-	int *tags_array;
+	sqlite3_int64 *tags_array;
 	int tags_array_size;
 
 	// item with id item_id already has tags with ids item_tag_ids

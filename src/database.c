@@ -137,7 +137,7 @@ int tag_exists(sqlite3 *db, char *tagName) {
  * @param tagName new tag's name
  * @return `tag_id` if the tag was added, `0` if tag already exists, `-1` on error
  */
-int64_t add_new_tag(sqlite3 *db, char *tagName) {
+sqlite3_int64 add_new_tag(sqlite3 *db, char *tagName) {
 	if (db == NULL || tagName == NULL) {
 		return -1;
 	}
@@ -179,9 +179,9 @@ int64_t add_new_tag(sqlite3 *db, char *tagName) {
  * @param tag_name a null-terminated string with the exact tag name
  * @return `tag_id` if the tag was found or `0` if the tag doesn't exist, or `-1` on error
  */
-int64_t get_tag_id(sqlite3 *db, char *tag_name) {
+sqlite3_int64 get_tag_id(sqlite3 *db, char *tag_name) {
 	sqlite3_stmt *stmt;
-	int64_t tag_id = 0;
+	sqlite3_int64 tag_id = 0;
 
 	int rc = sqlite3_prepare_v2(db, "SELECT tag_id FROM " TAGS_TABLE_NAME " WHERE tag_name=? LIMIT 1;", -1, &stmt, NULL);
 	if (rc != SQLITE_OK) {
@@ -248,7 +248,7 @@ int get_total_tags_count(sqlite3 *db) {
  * @param item_id id of an item to get the tags count of
  * @return number of tags of an item or `-1` on error
  */
-int get_item_tags_count(sqlite3 *db, int64_t item_id) {
+int get_item_tags_count(sqlite3 *db, sqlite3_int64 item_id) {
 	sqlite3_stmt *stmt;
 
 	int tag_count = -1;
@@ -291,7 +291,7 @@ int get_item_tags_count(sqlite3 *db, int64_t item_id) {
  * @param tags_array pointer where to store the array of tag ids
  * @return `0` on success, otherwise `-1` on error
  */
-int get_item_tag_ids(sqlite3 *db, int64_t item_id, int *tags_array_size, int **tags_array) {
+int get_item_tag_ids(sqlite3 *db, sqlite3_int64 item_id, int *tags_array_size, sqlite3_int64 **tags_array) {
 	if (item_id < 1 || tags_array_size == NULL || tags_array == NULL) { return -1; }
 
 	sqlite3_stmt *stmt;
@@ -299,7 +299,7 @@ int get_item_tag_ids(sqlite3 *db, int64_t item_id, int *tags_array_size, int **t
 	// get tags count
 	int tag_count = get_item_tags_count(db, item_id);
 	if (tag_count < 1) {
-		fprintf(stderr, "Error when getting item's tags count for item_id %ld\n", item_id);
+		fprintf(stderr, "Error when getting item's tags count for item_id %lld\n", item_id);
 		return -1;
 	}
 
@@ -313,7 +313,7 @@ int get_item_tag_ids(sqlite3 *db, int64_t item_id, int *tags_array_size, int **t
 	// allocate memory to store tags
 	*tags_array = malloc(tag_count * sizeof(int));
 	if (*tags_array == NULL) {
-		fprintf(stderr, "Error when getting item's tags count for item_id %ld\n", item_id);
+		fprintf(stderr, "Error when getting item's tags count for item_id %lld\n", item_id);
 		return -1;
 	}
 
@@ -342,13 +342,13 @@ int get_item_tag_ids(sqlite3 *db, int64_t item_id, int *tags_array_size, int **t
 			case SQLITE_DONE:
 				// less tags than expected!
 				sqlite3_finalize(stmt);
-				fprintf(stderr, "Error while getting item tags for item_id %lu, got less tags than expected!\n", item_id);
+				fprintf(stderr, "Error while getting item tags for item_id %lld, got less tags than expected!\n", item_id);
 				free(*tags_array);
 				return -1;
 			default:
 				// error
 				sqlite3_finalize(stmt);
-				fprintf(stderr, "Error while getting item tags for item_id %lu, %s\n", item_id, sqlite3_errmsg(db));
+				fprintf(stderr, "Error while getting item tags for item_id %lld, %s\n", item_id, sqlite3_errmsg(db));
 				free(*tags_array);
 				return -1;
 		}
@@ -369,10 +369,10 @@ int get_item_tag_ids(sqlite3 *db, int64_t item_id, int *tags_array_size, int **t
  * @param on_new_tags flag whether or not to auto-add non-existing tags
  * @return `1` if the item was updated, `0` if the item wasn't updated and `-1` on error
  */
-int update_tags(sqlite3 *db, int64_t item_id, char **tags, ON_NEW_TAGS on_new_tags) {
+int update_tags(sqlite3 *db, sqlite3_int64 item_id, char **tags, ON_NEW_TAGS on_new_tags) {
 	if (item_id <= 0) return -1; // bad item_id
 	if (tags == NULL) return 0; // no updates needed
-	int64_t tag_id;
+	sqlite3_int64 tag_id;
 	
 	// begin a transaction
 	if (execute_sql_string(db, "BEGIN TRANSACTION;")) {
@@ -420,7 +420,7 @@ int update_tags(sqlite3 *db, int64_t item_id, char **tags, ON_NEW_TAGS on_new_ta
 		if (tag_id == 0) { // tag not found
 			if (on_new_tags == AUTO_ADD_TAGS) {
 				if ((tag_id = add_new_tag(db, tag_name)) <= 0) {
-					fprintf(stderr, "Error when auto-adding a tag with name %s, return code was %ld\n", tag_name, tag_id);
+					fprintf(stderr, "Error when auto-adding a tag with name %s, return code was %lld\n", tag_name, tag_id);
 					sqlite3_finalize(stmt);
 					// rollback the transaction
 					if (execute_sql_string(db, "ROLLBACK;")) {
@@ -605,7 +605,7 @@ int add_new_listing(sqlite3 *db, char *listingName, LISTING_TYPE type, char *lis
  * @param path path to scan
  * @return `0` if the path was scanned successfully, otherwise `-1` on error
  */
-int refresh_listing_recursive(sqlite3 *db, int64_t listing_id, LISTING_TYPE type,
+int refresh_listing_recursive(sqlite3 *db, sqlite3_int64 listing_id, LISTING_TYPE type,
 							  size_t listing_root_path_nbytes, const char *path) {
 	sqlite3_stmt *stmt;
 	int rc;
@@ -733,7 +733,7 @@ int refresh_listing_recursive(sqlite3 *db, int64_t listing_id, LISTING_TYPE type
  * @param listing_id id of the listing to refresh
  * @return `0` if the listing was refreshed successfully, otherwise `-1` on error
  */
-int refresh_listing(sqlite3 *db, int64_t listing_id) {
+int refresh_listing(sqlite3 *db, sqlite3_int64 listing_id) {
 	sqlite3_stmt *stmt;
 	char *path;
 	LISTING_TYPE type;
@@ -790,7 +790,7 @@ int refresh_listing(sqlite3 *db, int64_t listing_id) {
  * @param listing_id id of the listing
  * @return the number of items in the listing, or `-1` on error
  */
-int get_listing_size(sqlite3 *db, int64_t listing_id) {
+int get_listing_size(sqlite3 *db, sqlite3_int64 listing_id) {
 	sqlite3_stmt *stmt;
 	int count = 0;
 
