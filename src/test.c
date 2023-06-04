@@ -232,6 +232,45 @@ int test_get_item_tag_ids(sqlite3 *database) {
 	return 0;
 }
 
+int test_add_tag_to_item(sqlite3 *database) {
+	const sqlite3_int64 item_id = 2;
+	const sqlite3_int64 tag_id = 1;
+
+	int tags_array_size;
+	sqlite3_int64 *tags_array;
+
+
+	if (get_item_tags_count(database, item_id) != 0) {
+		fprintf(stderr, "Expected the item with id %lld not to have any tags\n", item_id);
+		return -1;
+	}
+
+	if (add_tag_to_item(database, item_id, tag_id) != 1) {
+		fprintf(stderr, "Expected the tag to be successfully added to the item\n");
+		return -1;
+	}
+
+	if (get_item_tags_count(database, item_id) != 1) {
+		fprintf(stderr, "Expected the item with id %lld to have 1 tag\n", item_id);
+		return -1;
+	}
+
+	if (get_item_tag_ids(database, item_id, &tags_array_size, &tags_array) != 0) {
+		fprintf(stderr, "Expected the item tags to be fetched successfully\n");
+		return -1;
+	}
+
+	if (tags_array_size != 1 || tags_array[0] != tag_id) {
+		fprintf(stderr, "Expected the item with id %lld to have 1 tag with id %lld\n", item_id, tag_id);
+		free(tags_array);
+		return -1;
+	}
+
+	free(tags_array);
+	return 0;
+}
+
+
 int main(void) {
 	// testing helper functions
 	
@@ -285,6 +324,13 @@ int main(void) {
 		return -1;
 	}
 	fputs("get_item_tag_ids() test passed\n", stderr);
+
+	if (test_add_tag_to_item(database)) {
+		fputs("add_tag_to_item() test failed\n", stderr);
+		close_database(database);
+		return -1;
+	}
+	fputs("add_tag_to_item() test passed\n", stderr);
 
 	close_database(database);
 

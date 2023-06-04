@@ -361,6 +361,49 @@ int get_item_tag_ids(sqlite3 *db, sqlite3_int64 item_id, int *tags_array_size, s
 }
 
 /**
+ * @brief Tag an item with a tag
+ *
+ * @param db sqlite3 database
+ * @param item_id id of the item to tag
+ * @param tag_id id of the tag
+ * @return `1` if the tag was added, `0` if the item already had the tag, `-1` on error
+ */
+int add_tag_to_item(sqlite3 *db, sqlite3_int64 item_id, sqlite3_int64 tag_id) {
+	sqlite3_stmt *stmt;
+	int rc = sqlite3_prepare_v2(db, "INSERT INTO " ITEM_TAGS_TABLE_NAME " (item_id,tag_id) VALUES (?,?);", -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when preparing SQL query: %s\n", sqlite3_errmsg(db));
+		return -1;
+	}
+
+	// 1 here means leftmost SQL parameter index
+	rc = sqlite3_bind_int64(stmt, 1, item_id);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+
+	rc = sqlite3_bind_int64(stmt, 2, tag_id);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Error when binding value with SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc == SQLITE_DONE) {
+		return 1;
+	} else if (rc == SQLITE_CONSTRAINT) { // item already has this tag
+		return 0;
+	} else {
+		fprintf(stderr, "Error when executing SQL query: %s\n", sqlite3_errmsg(db));
+		sqlite3_finalize(stmt);
+		return -1;
+	}
+}
+
+/**
  * @brief Update item's tags to include those supplied in the provided tag array
  *
  * @param db sqlite3 database

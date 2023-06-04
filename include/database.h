@@ -6,6 +6,7 @@ typedef enum {AUTO_ADD_TAGS, DONT_AUTO_ADD_TAGS} ON_NEW_TAGS;
 
 sqlite3_int64 add_new_tag(sqlite3 *db, char *tagName);
 int get_item_tag_ids(sqlite3 *db, sqlite3_int64 item_id, int *tags_array_size, sqlite3_int64 **tags_array);
+int add_tag_to_item(sqlite3 *db, sqlite3_int64 item_id, sqlite3_int64 tag_id);
 int update_tags(sqlite3 *db, sqlite3_int64 item_id, char **tags, ON_NEW_TAGS on_new_tags);
 int add_new_listing(sqlite3 *db, char *name, LISTING_TYPE type, char *path);
 int refresh_listing(sqlite3 *db, sqlite3_int64 listing_id);
